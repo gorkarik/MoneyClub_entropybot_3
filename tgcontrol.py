@@ -1,12 +1,12 @@
 """Управление ботом из Telegram: постоянный слушатель чата.
 
-Запускается сам (cron через `moneyclub --resume`, после перезагрузки сервера
-и при установке) в своей фоновой tmux-сессии: `moneyclub --telegram`.
+Запускается сам (cron через `Mriya --resume`, после перезагрузки сервера
+и при установке) в своей фоновой tmux-сессии: `Mriya --telegram`.
 Работает и когда торговый бот остановлен — поэтому из чата можно его
 запустить.
 
 Всё управление — кнопками одного «живого» сообщения: нажатие меняет это же
-сообщение, чат не засоряется. Сверху каждого сообщения — шапка MONEY CLUB.
+сообщение, чат не засоряется. Сверху каждого сообщения — шапка MRIYA.
 Из команд нужна только /menu (остальные старые команды тоже работают).
 
 Отвечает только чату из .env (TELEGRAM_CHAT_ID), всё остальное
@@ -45,7 +45,7 @@ REPORT_PERIODS = {"24": (24, "24 часа"), "168": (168, "неделю"),
                   "0": (0, "всё время")}
 MAX_TEXT = 3800                 # предел сообщения Telegram — 4096
 
-HEADER = "💚 <b>MONEY CLUB</b> · версия 3\n━━━━━━━━━━━━━━━━━━\n"
+HEADER = "💚 <b>MRIYA</b> · версия 4\n━━━━━━━━━━━━━━━━━━\n"
 MENU_BTN = ("« Меню", "menu")
 
 HELP = (
@@ -68,7 +68,7 @@ HELP = (
     "📊 Статус · 💰 Результат · 📄 Отчёт — что происходит и сколько "
     "заработано.\n\n"
     "Меню всегда можно открыть командой /menu.\n"
-    "Ключи бирж меняются только на сервере (команда moneyclub).")
+    "Ключи бирж меняются только на сервере (команда Mriya).")
 
 Buttons = Optional[List[List[Tuple[str, str]]]]
 
@@ -123,7 +123,7 @@ class Api:
     def set_commands(self) -> None:
         """В списке команд Telegram — только /menu."""
         self.call("setMyCommands", {"commands": [
-            {"command": "menu", "description": "Меню MoneyClub"}]})
+            {"command": "menu", "description": "Меню Mriya"}]})
 
     def updates(self, timeout: int = 25) -> list:
         payload = {"timeout": timeout,
@@ -407,7 +407,7 @@ class Control:
         if not ok:
             golive_clear()
             self.menu("✘ Бот не запустился. Подробности — на сервере "
-                      "(команда moneyclub → Старт) или в logs/stderr.log.")
+                      "(команда Mriya → Старт) или в logs/stderr.log.")
             return
         self.menu(done or ("✅ Запущена тестовая запись (без денег)." if record
                            else "✅ Запущена торговля на реальные деньги."))
@@ -419,7 +419,7 @@ class Control:
         _, keys_ok = club.keys_state(pair[0])
         if not keys_ok:
             return ("✘ Ключи для этой биржи не заполнены. Ключи вводятся "
-                    "только на сервере: команда moneyclub → Настройки → "
+                    "только на сервере: команда Mriya → Настройки → "
                     "Ключи.", [[MENU_BTN]])
         if not club.live_deps_ok():
             return ("✘ Не установлены библиотеки боевого режима. Запустите "
@@ -513,7 +513,7 @@ class Control:
         ok = club.stop_bots([b for b in club.find_bots() if b.ours])
         if not ok:
             self.menu("✘ Не удалось остановить бота — проверьте на сервере "
-                      "(команда moneyclub → Стоп).")
+                      "(команда Mriya → Стоп).")
             return None
         if show:
             self.menu("⏹ Бот остановлен.")
@@ -592,7 +592,8 @@ class Control:
             "• 4: сетка — лесенка вокруг средней премии, сама решает, когда "
             "входить (автокоридор в ней не действует)\n\n"
             f"Сейчас: {club.strategy_label(smode)} · "
-            f"{club.autoband_short(ab)}", rows)
+            + ("автокоридор не действует" if smode == "grid"
+               else club.autoband_short(ab)), rows)
 
     def set_mode(self, name: str) -> None:
         prof = next((p for p in club.AUTOBAND_PROFILES if p[0] == name), None)
@@ -927,7 +928,7 @@ def code_stamp():
 
 
 def listen() -> int:
-    """`moneyclub --telegram`: слушать чат, пока Telegram настроен."""
+    """`Mriya --telegram`: слушать чат, пока Telegram настроен."""
     import fcntl
     os.chdir(club.APP_DIR)
     os.makedirs(club.LOG_DIR, exist_ok=True)

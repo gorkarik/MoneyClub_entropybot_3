@@ -703,7 +703,7 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
         if not os.path.exists(ticker_file):
             raise ConfigError(
                 f"no settings for {symbol} on {hedge_venue}: {ticker_file} is "
-                f"missing — choose the pair in the menu (moneyclub) to create "
+                f"missing — choose the pair in the menu (Mriya) to create "
                 f"it / нет настроек пары {symbol} · {hedge_venue} — выберите "
                 f"её в меню")
         prof = read_ticker_profile(ticker_file)

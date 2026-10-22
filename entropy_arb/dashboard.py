@@ -1,4 +1,4 @@
-"""Terminal dashboard of MoneyClub 3 (Russian with --ru).
+"""Terminal dashboard of Mriya (Russian with --ru).
 
 Deliberately minimal: one look tells how the session goes.
 
@@ -192,7 +192,7 @@ class Dashboard:
                 live.update(self._safe_render())
                 await asyncio.sleep(0.25)
         t = Text()
-        t.append("MoneyClub 3 " + self._t("stopped"), style="bold")
+        t.append("Mriya " + self._t("stopped"), style="bold")
         r = eng.session_result() if hasattr(eng, "session_result") else None
         if r is not None:
             t.append(self._t(" — session result "))
@@ -474,7 +474,7 @@ class Dashboard:
         eng = self.eng
         if eng.entropy is None or eng.hedge is None or not eng.markets_ready:
             return Panel(Text(self._t("starting — resolving markets…"),
-                              style="yellow"), title="MoneyClub 3",
+                              style="yellow"), title="Mriya",
                          box=box.ROUNDED)
         parts = [self._header(), Text("")]
         if eng.record_only:
@@ -514,7 +514,7 @@ class Dashboard:
             for n in nt:
                 parts.append(Text("• " + n, style="yellow"))
         nick = getattr(eng.cfg, "nickname", "")
-        title = "MoneyClub 3" + (f" · {nick}" if nick else "")
+        title = "Mriya" + (f" · {nick}" if nick else "")
         return Panel(Group(*parts), title=title, box=box.ROUNDED,
                      padding=(0, 1),
                      subtitle=self._t("Q — exit to the menu (the bot keeps "

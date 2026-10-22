@@ -132,7 +132,7 @@ def leg1(eng) -> str:
 def start_text(eng) -> str:
     mode = "тестовая запись (без сделок)" if eng.record_only \
         else "режим торговли"
-    lines = ["▶️ MoneyClub 3 запущен", f"Пара: {pair_title(eng)}",
+    lines = ["▶️ Mriya запущен", f"Пара: {pair_title(eng)}",
              f"Режим: {mode}"]
     if not eng.record_only:
         cfg = eng.cfg
@@ -210,7 +210,7 @@ STOP_REASONS = {"manual": "вручную (Стоп)", "loss_limit": "стоп �
 def finish_text(eng, s: dict) -> str:
     """s: what _finish_session computed (live) — see Engine._finish_session."""
     pnl, pct = s.get("pnl"), s.get("pnl_pct")
-    head = "⏹ MoneyClub 3 остановлен"
+    head = "⏹ Mriya остановлен"
     lines = [head, f"Пара: {pair_title(eng)}"]
     res = _usd(pnl, sign=True)
     if pct is not None:

@@ -304,8 +304,8 @@ def test_menu_has_test_recording_and_limit_buttons(ctl):
 
 
 def test_bot_session_lookup_is_exact(monkeypatch):
-    """tmux matches a session name by prefix: «moneyclub3» found the
-    listener «moneyclub3-tg», and Stop killed the listener itself."""
+    """tmux matches a session name by prefix: «mriya» found the
+    listener «mriya-tg», and Stop killed the listener itself."""
     import club
     seen = []
     monkeypatch.setattr(club, "tmux", lambda *a, **k: seen.append(a) or

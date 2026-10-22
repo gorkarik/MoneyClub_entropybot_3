@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""MoneyClub версия 3 — меню управления ботом.
+"""Mriya версия 4 — меню управления ботом.
 
-Запуск: команда `moneyclub` (ставится install.sh) или `venv/bin/python club.py`.
+Запуск: команда `Mriya` (ставится install.sh) или `venv/bin/python club.py`.
 
 Entropy — всегда одна нога; вторая — Lighter RH (Robinhood chain) или Ondo,
 выбирается при Старте вместе с тикером. У каждой пары «биржа + тикер»
@@ -111,21 +111,21 @@ ENV_EXAMPLE = ".env.example"
 LOG_DIR = "logs"
 STDERR_LOG = os.path.join(LOG_DIR, "stderr.log")
 
-APP_NAME = "MoneyClub_entropybot_3"
-SUBTITLE = "версия 3"   # мелкая подпись рядом с заставкой
+APP_NAME = "Mriya"
+SUBTITLE = "версия 4"   # мелкая подпись рядом с заставкой
 
 
 def _tmux_name() -> str:
     """Имя tmux-сокета: своё у каждой папки, чтобы Старт этого бота не
-    закрывал сессию другого (moneyclub на том же сервере — отдельно)."""
-    base = os.path.basename(APP_DIR.rstrip("/")) or "moneyclub3"
-    if base in ("money-club-3", "MoneyClub_entropybot_3"):
-        return "moneyclub3"
-    return "moneyclub3-" + re.sub(r"[^A-Za-z0-9_-]", "", base).lower()
+    закрывал сессию другого бота на том же сервере."""
+    base = os.path.basename(APP_DIR.rstrip("/")) or "mriya"
+    if base.lower() == "mriya":
+        return "mriya"
+    return "mriya-" + re.sub(r"[^A-Za-z0-9_-]", "", base).lower()
 
 
 TMUX_SOCKET = TMUX_SESSION = _tmux_name()
-TMUX_CONF = os.path.join(APP_DIR, ".moneyclub-tmux.conf")
+TMUX_CONF = os.path.join(APP_DIR, ".mriya-tmux.conf")
 
 DEFAULT_THRESHOLDS = {"midline_bps": -7.0, "upper_bps": 4.0, "lower_bps": 4.5}
 DEFAULT_POSITION_USD = 25.0
@@ -228,24 +228,18 @@ EXEC_RESET = "20"
 STOP_WAIT_LIVE_SEC = 90           # закрытие позиций при Стопе + итог сессии
 
 BANNER = r"""
- ███╗   ███╗ ██████╗ ███╗   ██╗███████╗██╗   ██╗
- ████╗ ████║██╔═══██╗████╗  ██║██╔════╝╚██╗ ██╔╝
- ██╔████╔██║██║   ██║██╔██╗ ██║█████╗   ╚████╔╝
- ██║╚██╔╝██║██║   ██║██║╚██╗██║██╔══╝    ╚██╔╝
- ██║ ╚═╝ ██║╚██████╔╝██║ ╚████║███████╗   ██║
- ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝
-        ██████╗██╗     ██╗   ██╗██████╗
-       ██╔════╝██║     ██║   ██║██╔══██╗
-       ██║     ██║     ██║   ██║██████╔╝
-       ██║     ██║     ██║   ██║██╔══██╗
-       ╚██████╗███████╗╚██████╔╝██████╔╝
-        ╚═════╝╚══════╝ ╚═════╝ ╚═════╝
+ ███╗   ███╗ ██████╗  ██╗ ██╗   ██╗  █████╗
+ ████╗ ████║ ██╔══██╗ ██║ ╚██╗ ██╔╝ ██╔══██╗
+ ██╔████╔██║ ██████╔╝ ██║  ╚████╔╝  ███████║
+ ██║╚██╔╝██║ ██╔══██╗ ██║   ╚██╔╝   ██╔══██║
+ ██║ ╚═╝ ██║ ██║  ██║ ██║    ██║    ██║  ██║
+ ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝    ╚═╝    ╚═╝  ╚═╝
 """
-BANNER_COMPACT = "\n  M O N E Y   C L U B"
+BANNER_COMPACT = "\n  M R I Y A"
 BANNER_STYLE = "bold bright_green"    # заставка зелёная
 
 TMUX_CONF_TEXT = """\
-# Создаётся автоматически меню MoneyClub 3 — вручную не редактировать.
+# Создаётся автоматически меню Mriya — вручную не редактировать.
 set -g default-terminal "screen-256color"
 set -g escape-time 0
 set -g mouse off
@@ -352,7 +346,7 @@ def clear() -> None:
 
 
 def print_banner() -> None:
-    """Зелёная заставка MONEY CLUB; мелкая подпись «версия 3» — справа от
+    """Зелёная заставка MRIYA; мелкая подпись «версия 4» — справа от
     последней строки букв."""
     wide = console.width >= 52
     lines = (BANNER if wide else BANNER_COMPACT).rstrip("\n").split("\n")
@@ -534,7 +528,7 @@ def _pair_text(pair, entropy_name: str, hedge_names: str, base: dict,
     hfee_line = ""
     title = VENUE_TITLES.get(venue, venue)
     return f"""\
-# MoneyClub 3 · настройки пары {ticker} · {leg1} ↔ {title}
+# Mriya · настройки пары {ticker} · {leg1} ↔ {title}
 # Меню меняет этот файл само. Пороги относятся только к этой паре: у разных
 # тикеров и у разных бирж разная премия, переносить их нельзя.
 
@@ -934,7 +928,7 @@ def _env_template() -> str:
     if os.path.exists(ENV_EXAMPLE):
         with open(ENV_EXAMPLE, encoding="utf-8") as fh:
             return fh.read()
-    return "# MoneyClub 3 — ключи. Заполняются через меню.\n" + \
+    return "# Mriya — ключи. Заполняются через меню.\n" + \
         "".join(f"{k}=\n" for k in ENV_KEYS)
 
 
@@ -1193,7 +1187,7 @@ def trim_log(path: str, max_bytes: int = STDERR_MAX_BYTES,
 # ------------------------------------------------- автоперезапуск
 # Меню при Старте записывает, что бот должен работать (logs/.autorun), при
 # Стопе — стирает. Раз в 5 минут и после перезагрузки сервера cron вызывает
-# `moneyclub --resume`: если бот должен работать, а его нет (упал, сервер
+# `Mriya --resume`: если бот должен работать, а его нет (упал, сервер
 # перезагрузился), он запускается снова в том же режиме и с той же парой.
 # Больше AUTORUN_MAX перезапусков за час — автоперезапуск выключается и
 # приходит сообщение в Telegram: значит, бот падает сразу после старта.
@@ -1243,7 +1237,7 @@ def _tg_notify(text: str) -> None:
 
 
 def resume_main() -> int:
-    """`moneyclub --resume` (cron): поднять бота, если он должен работать."""
+    """`Mriya --resume` (cron): поднять бота, если он должен работать."""
     import fcntl
     os.chdir(APP_DIR)
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -1268,7 +1262,7 @@ def resume_main() -> int:
         os.replace(AUTORUN_FILE, AUTORUN_FILE + ".off")
         _tg_notify(f"🚨 Бот падает сразу после запуска ({len(recent)} раза "
                    f"за час) — автоперезапуск выключен. Откройте меню "
-                   f"(команда moneyclub) и посмотрите ошибку.")
+                   f"(команда Mriya) и посмотрите ошибку.")
         return 1
     recent.append(now)
     _atomic_write(AUTORUN_LOG, " ".join(f"{t:.0f}" for t in recent))
@@ -1278,7 +1272,7 @@ def resume_main() -> int:
                f"сервера) и запущен снова: {pair_label((venue, ticker))}, "
                f"{what}." if ok else
                f"🚨 Бот остановился и не смог запуститься снова: "
-               f"{pair_label((venue, ticker))}. Откройте меню (moneyclub).")
+               f"{pair_label((venue, ticker))}. Откройте меню (Mriya).")
     return 0 if ok else 1
 
 
@@ -1535,7 +1529,7 @@ def _http_json(url: str, payload: dict = None, timeout: float = 8.0):
     data = None if payload is None else json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json",
-                                 "User-Agent": "moneyclub3"})
+                                 "User-Agent": "mriya"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -1986,7 +1980,7 @@ def open_dashboard(skip_intro: bool = False) -> None:
             console.print(f"  [dim]{err}[/dim]")
         console.print("  Бот при этом работает. Попробуйте ещё раз; если не "
                       "выходит — закройте окно терминала\n  и зайдите на "
-                      "сервер заново (команда moneyclub).")
+                      "сервер заново (команда Mriya).")
         pause()
 
 
@@ -2197,7 +2191,7 @@ def action_calibration() -> None:
     header(f"Анализ / калибровка · {t}")
     line = "─" * 22
     print(f"  {line} скопируйте отсюда {line}\n")
-    print(f"MONEYCLUB 3 · анализ {t} · период: {label}")
+    print(f"MRIYA · анализ {t} · период: {label}")
     print(f"Текущие настройки: midline {fmt(v['midline_bps'])} | upper "
           f"{fmt(v['upper_bps'])} | lower {fmt(v['lower_bps'])} | лимит позиции "
           f"{usd(v['pos_entropy'])} | сделка до {usd(v['order'])}")
@@ -3261,8 +3255,10 @@ def strategy_menu() -> None:
         texts = strategy_texts(title, v)
         ab = autoband_values()
         header("Настройки · стратегия и автокоридор")
+        band_now = ("автокоридор не действует" if mode == "grid"
+                    else autoband_short(ab))
         console.print(f"  Сейчас: [bold]{strategy_label(mode)} · "
-                      f"{autoband_short(ab)}[/bold] [dim](общие для всех "
+                      f"{band_now}[/bold] [dim](общие для всех "
                       f"пар)[/dim]")
         console.print(f"  Защита: {protection_summary(v)}\n")
         console.print("  [dim]Автокоридор решает, КОГДА входить в сделку; "
@@ -3705,7 +3701,7 @@ def telegram_menu() -> None:
             telegram_connect()
         elif choice == "2" and token and chat:
             r = tg_call(token, "sendMessage", {
-                "chat_id": chat, "text": "✅ Тест: MoneyClub 3 на связи."})
+                "chat_id": chat, "text": "✅ Тест: Mriya на связи."})
             console.print("  [green]✔ Отправлено — проверьте Telegram.[/green]"
                           if r.get("ok") else
                           f"  [red]✘ Не отправлено: {r.get('description')}"
@@ -3791,7 +3787,7 @@ def telegram_connect() -> None:
             pass
         r = tg_call(raw, "sendMessage", {
             "chat_id": chat_id,
-            "text": "✅ MoneyClub 3 подключён.\nСюда будут приходить сообщения "
+            "text": "✅ Mriya подключён.\nСюда будут приходить сообщения "
                     "о старте и итоге сессии.\nУправление ботом — /menu "
                     "(кнопки), список команд — /help"})
         console.print("\n  [green]✔ Подключено.[/green] Проверьте Telegram — "
@@ -4143,7 +4139,7 @@ def main() -> None:
             clear()
             console.print("  Бот продолжает работать на сервере, если был "
                           "запущен.\n  Открыть меню снова — команда [bold]"
-                          "moneyclub[/bold]\n")
+                          "Mriya[/bold]\n")
             return
         fn = actions.get(choice)
         if fn is None:

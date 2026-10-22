@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# MoneyClub версия 3 — установка на сервер Ubuntu одной командой:
+# Mriya версия 4 — установка на сервер Ubuntu одной командой:
 #
-#   curl -fsSL https://raw.githubusercontent.com/gorkarik/MoneyClub_entropybot_3/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/gorkarik/Mriya/main/install.sh | bash
 #
-# или из скачанной папки:  bash MoneyClub_entropybot_3/install.sh
+# или из скачанной папки:  bash Mriya/install.sh
 #
-# Код ставится в папку ~/money-club-3. Меню открывается само при входе на
-# сервер по SSH, а после выхода из меню его открывает команда moneyclub.
+# Код ставится в папку ~/mriya. Меню открывается само при входе на сервер
+# по SSH, а после выхода из меню его открывает команда Mriya (или mriya).
 # Повторный запуск обновляет код, а ключи (.env), настройки (config.yaml,
 # tickers/) и журналы (logs/) остаются как были.
-# Если на сервере уже есть MoneyClub версии 2 с командой moneyclub, её
-# команда переименовывается в moneyclub2, сам бот и его папка не трогаются.
+# Прежняя установка версии 3 (папка ~/money-club-3) переносится в ~/mriya
+# вместе с ключами, настройками и журналами; её старая команда, автооткрытие
+# меню и автоперезапуск убираются. Перед этим бот версии 3 надо остановить.
 #
 # Всё обёрнуто в функцию main и вызывается в самом конце — если файл
 # оборвётся на середине, недописанный скрипт просто не выполнится.
@@ -19,20 +20,21 @@ main() {
   set -euo pipefail
 
   # адрес репозитория (если назовёте его иначе — поменяйте здесь)
-  local REPO_URL="${MONEYCLUB_REPO:-https://github.com/gorkarik/MoneyClub_entropybot_3.git}"
+  local REPO_URL="${MRIYA_REPO:-https://github.com/gorkarik/Mriya.git}"
   local SRC=""
   if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
     SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     { [ -f "$SRC/club.py" ] && [ -d "$SRC/entropy_arb" ]; } || SRC=""
   fi
-  local APP_DIR="${MONEYCLUB_DIR:-$HOME/money-club-3}"
-  local CMD="${MONEYCLUB_CMD:-moneyclub}"
+  local APP_DIR="${MRIYA_DIR:-$HOME/mriya}"
+  local CMD="${MRIYA_CMD:-Mriya}"
+  local OLD_DIR="$HOME/money-club-3"     # установка версии 3
 
   say()  { printf '\n  \033[1m%s\033[0m\n' "$*"; }
   ok()   { printf '  ✔ %s\n' "$*"; }
   fail() { printf '\n  ✘ %s\n\n' "$*" >&2; exit 1; }
 
-  printf '\n  \033[1;92mM O N E Y   C L U B\033[0m  ·  версия 3  —  установка\n'
+  printf '\n  \033[1;92mM R I Y A\033[0m  ·  версия 4  —  установка\n'
 
   # ---- права: root работает напрямую, обычный пользователь — через sudo
   local SUDO=""
@@ -85,11 +87,34 @@ main() {
     ok "файл подкачки уже есть"
   fi
 
+  # ---- переезд с версии 3: папка ~/money-club-3 → ~/mriya (ключи,
+  # настройки, журналы и библиотеки переезжают вместе с ней)
+  if [ -f "$OLD_DIR/club.py" ] && [ ! -e "$APP_DIR" ]; then
+    say "Переезд с версии 3"
+    local p running=""
+    for p in /proc/[0-9]*; do
+      [ "$(readlink "$p/cwd" 2>/dev/null)" = "$OLD_DIR" ] || continue
+      tr '\0' ' ' < "$p/cmdline" 2>/dev/null | grep -q "main.py" && running=1
+    done
+    if [ -n "$running" ]; then
+      fail "Бот версии 3 сейчас работает. Остановите его: команда moneyclub → Стоп (он закроет позиции), потом запустите установку снова."
+    fi
+    # слушатель Telegram версии 3 (не торгует) — закрыть, его заменит новый
+    tmux -L moneyclub3 kill-server >/dev/null 2>&1 || true
+    mv "$OLD_DIR" "$APP_DIR"
+    rm -f "$APP_DIR/.moneyclub-tmux.conf"
+    if [ -f /usr/local/bin/moneyclub ] \
+       && grep -qF "$OLD_DIR/club.py" /usr/local/bin/moneyclub; then
+      $SUDO rm -f /usr/local/bin/moneyclub
+    fi
+    ok "перенесено в $APP_DIR: ключи, настройки и журналы на месте"
+  fi
+
   # ---- 2. код бота: из GitHub (git) или из скачанной папки; свои файлы
   # пользователя (.env, config.yaml, tickers/, logs/, venv/) не трогаем
   say "[2/5] Код бота"
   if [ -e "$APP_DIR" ] && [ ! -f "$APP_DIR/club.py" ]; then
-    fail "Папка $APP_DIR уже есть и это не установка MoneyClub 3. Переименуйте её и запустите снова."
+    fail "Папка $APP_DIR уже есть и это не установка Mriya. Переименуйте её и запустите снова."
   fi
   if [ -n "$SRC" ]; then
     mkdir -p "$APP_DIR"
@@ -102,6 +127,7 @@ main() {
       ok "установка прямо в этой папке ($APP_DIR)"
     fi
   elif [ -d "$APP_DIR/.git" ]; then
+    git -C "$APP_DIR" remote set-url origin "$REPO_URL" 2>/dev/null || true
     git -C "$APP_DIR" pull --ff-only -q \
       || fail "Не удалось обновить код в $APP_DIR (git pull)."
     ok "обновлён ($APP_DIR)"
@@ -153,49 +179,45 @@ main() {
     ok ".env уже есть — ключи сохранены"
   fi
 
-  # ---- 5. команда moneyclub. Если она была у MoneyClub версии 2 (другая
-  # папка), её команда становится moneyclub2 — тот бот остаётся доступен.
+  # ---- 5. команда Mriya (и mriya маленькими буквами)
   say "[5/5] Команда $CMD"
   local BIN="/usr/local/bin/$CMD"
-  if [ -f "$BIN" ] && ! grep -qF "$APP_DIR/club.py" "$BIN"; then
-    if [ ! -e "${BIN}2" ]; then
-      $SUDO mv "$BIN" "${BIN}2"
-      ok "прежний бот с командой $CMD теперь открывается командой ${CMD}2"
-    else
-      printf '  ! команда %s заменена (команда %s2 уже была)\n' "$CMD" "$CMD"
-    fi
-  fi
+  local LOW
+  LOW="$(printf '%s' "$CMD" | tr '[:upper:]' '[:lower:]')"
   local LAUNCHER
   LAUNCHER="$(mktemp)"
   cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
-# MoneyClub версия 3 — открыть меню
+# Mriya версия 4 — открыть меню
 export PYTHONUTF8=1
 cd "$APP_DIR" && exec "$APP_DIR/venv/bin/python" "$APP_DIR/club.py" "\$@"
 EOF
   chmod 755 "$LAUNCHER"
   $SUDO mv "$LAUNCHER" "$BIN"
+  if [ "$LOW" != "$CMD" ]; then
+    $SUDO ln -sf "$BIN" "/usr/local/bin/$LOW"
+  fi
   ok "меню открывается командой: $CMD"
 
-  # ---- меню при входе на сервер по SSH. Старые блоки автозапуска (moneyclub
-  # версии 2, volume_earningbot) убираются, чтобы при входе не открывались
-  # два меню подряд; их команды остаются.
+  # ---- меню при входе на сервер по SSH. Старые блоки автозапуска (прежние
+  # версии, volume_earningbot) убираются, чтобы при входе не открывались
+  # два меню подряд.
   local RC="$HOME/.bashrc"
   touch "$RC"
   local tag
-  for tag in moneyclub volume_earningbot moneyclub3; do
+  for tag in moneyclub volume_earningbot moneyclub3 mriya; do
     if grep -q ">>> $tag >>>" "$RC"; then
       sed -i "/>>> $tag >>>/,/<<< $tag <<</d" "$RC"
-      [ "$tag" = moneyclub3 ] || ok "старое автооткрытие меню ($tag) при входе снято"
+      [ "$tag" = mriya ] || ok "старое автооткрытие меню при входе снято"
     fi
   done
   cat >> "$RC" <<EOF
-# >>> moneyclub3 >>>  (меню при входе по SSH; отключить: удалите этот блок)
-if [ -n "\$SSH_TTY" ] && [ -z "\$TMUX" ] && [ -z "\$MONEYCLUB_NOAUTO" ] \\
+# >>> mriya >>>  (меню при входе по SSH; отключить: удалите этот блок)
+if [ -n "\$SSH_TTY" ] && [ -z "\$TMUX" ] && [ -z "\$MRIYA_NOAUTO" ] \\
    && [[ \$- == *i* ]] && command -v $CMD >/dev/null 2>&1; then
   $CMD
 fi
-# <<< moneyclub3 <<<
+# <<< mriya <<<
 EOF
   ok "меню будет открываться само при входе на сервер"
 
@@ -203,8 +225,9 @@ EOF
   # (cron раз в 5 минут вызывает "$CMD --resume"; бот поднимается, только
   # если его запускали из меню и не останавливали Стопом)
   if command -v crontab >/dev/null 2>&1; then
-    local CRON_TAG="# moneyclub3 autorun ($APP_DIR)"
-    { crontab -l 2>/dev/null | grep -vF "$CRON_TAG" || true
+    local CRON_TAG="# mriya autorun ($APP_DIR)"
+    { crontab -l 2>/dev/null | grep -vF "$CRON_TAG" \
+        | grep -vF "# moneyclub3 autorun ($OLD_DIR)" || true
       echo "@reboot sleep 60; /usr/local/bin/$CMD --resume >/dev/null 2>&1 $CRON_TAG"
       echo "*/5 * * * * /usr/local/bin/$CMD --resume >/dev/null 2>&1 $CRON_TAG"
     } | crontab -
