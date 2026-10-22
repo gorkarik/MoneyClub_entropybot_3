@@ -28,6 +28,7 @@ from .recorder import MinuteRecorder
 from .slipgate import SlipModel, leg_slip_bps, slip_file_name
 from .strategy import VolumeCost, strategy_title, tight_entropy_first
 from .ticks import TickRecorder
+from .flows import FlowRecorder
 from . import autocalib, autotune
 from . import backtest as bt
 from . import autonomy
@@ -502,6 +503,13 @@ class Engine:
                                            self.hedge.book, cfg.staleness_sec)
             tasks.append(asyncio.create_task(self.recorder.run(self.stop),
                                              name="recorder"))
+        flows_min = getattr(cfg, "flows_min_usd", 0.0)
+        ent = self.entropy
+        if flows_min > 0 and getattr(ent, "kind", "") == "hl" and ent.coin:
+            tasks.append(asyncio.create_task(
+                FlowRecorder(cfg.flows_dir, cfg.hedge_venue, cfg.symbol,
+                             ent.ws_url, ent.coin, flows_min).run(self.stop),
+                name="flows"))
         if cfg.ticks_sec > 0:
             self.ticks = TickRecorder(
                 cfg.ticks_dir, cfg.hedge_venue, cfg.symbol, self.entropy.book,

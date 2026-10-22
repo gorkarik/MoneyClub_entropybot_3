@@ -221,6 +221,9 @@ class Config:
     # one file per pair and day under ticks_dir; 0 = off
     ticks_sec: float = 0.5
     ticks_dir: str = "logs/ticks"
+    # large trades on Entropy (flows.py), record only; 0 = off
+    flows_min_usd: float = 20000.0
+    flows_dir: str = "logs/flows"
     # auto-calibration of the midline (autocalib.py) — off unless the user
     # turns it on; anchor = midline last set by hand (None: the midline at
     # start); last_ts = when it last ran for this pair
@@ -460,6 +463,8 @@ _SCHEMA: Dict[str, Any] = {
         "csv": str,
         "ticks_sec": float,
         "ticks_dir": str,
+        "flows_min_usd": float,
+        "flows_dir": str,
     },
     "logging": {
         "level": str,
@@ -822,6 +827,9 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
                           "of the position cap where the surcharge starts / "
                           "должно быть от 0 до 1 (не включая 1)")
 
+    flows_min = float(_get(raw, "recorder", "flows_min_usd", 20000.0))
+    if flows_min < 0:
+        raise ConfigError("recorder.flows_min_usd must be >= 0 (0 = off)")
     ticks_sec = float(_get(raw, "recorder", "ticks_sec", 0.5))
     if not (ticks_sec == 0.0 or 0.25 <= ticks_sec <= 60.0):
         raise ConfigError("recorder.ticks_sec must be 0 (off) or 0.25..60 "
@@ -1052,6 +1060,8 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
         slipgate_max_samples=int(sg["max_samples"]),
         ticks_sec=ticks_sec,
         ticks_dir=str(_get(raw, "recorder", "ticks_dir", "logs/ticks")),
+        flows_min_usd=flows_min,
+        flows_dir=str(_get(raw, "recorder", "flows_dir", "logs/flows")),
         autonomy=autonomy,
         autoband=autoband,
         nickname=str(_get(raw, "bot", "nickname", "") or "").strip(),
