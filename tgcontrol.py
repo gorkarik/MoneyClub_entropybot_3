@@ -577,7 +577,9 @@ class Control:
         rows.append([(("● " if smode == "simultaneous" else "")
                       + "Стратегия 1", "st:simultaneous"),
                      (("● " if smode == "entropy_first" else "")
-                      + "Стратегия 2", "st:entropy_first")])
+                      + "Стратегия 2", "st:entropy_first"),
+                     (("● " if smode == "grid" else "")
+                      + "Стратегия 4", "st:grid")])
         rows.append([MENU_BTN])
         notes = "\n".join(f"• {n}: {t}" for n, _s, _c, t
                           in club.AUTOBAND_PROFILES)
@@ -586,7 +588,9 @@ class Control:
             "Автокоридор — КОГДА входить:\n" + notes +
             "\n\nСтратегия — КАК исполнять:\n"
             "• 1: обе ноги сразу\n"
-            "• 2: сначала Entropy с пределом цены, потом хедж\n\n"
+            "• 2: сначала Entropy с пределом цены, потом хедж\n"
+            "• 4: сетка — лесенка вокруг средней премии, сама решает, когда "
+            "входить (автокоридор в ней не действует)\n\n"
             f"Сейчас: {club.strategy_label(smode)} · "
             f"{club.autoband_short(ab)}", rows)
 
@@ -601,7 +605,7 @@ class Control:
                     f"Автокоридор: режим «{name}»")
 
     def set_strategy(self, mode: str) -> None:
-        if mode not in ("simultaneous", "entropy_first"):
+        if mode not in ("simultaneous", "entropy_first", "grid"):
             return
         self.change([("execution", "mode", mode)],
                     club.strategy_label(mode))

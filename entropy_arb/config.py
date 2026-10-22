@@ -236,6 +236,10 @@ class Config:
     # Fixed in strategy.py; the old config keys are read and ignored.
     volume_narrow_bps: float = 2.0
     volume_max_cost_usd: float = 1.0
+    # strategy 4 «Сетка»: ladder step (bps of premium) and the hours of
+    # the median the ladder is centred on
+    grid_step_bps: float = 4.0
+    grid_centre_hours: float = 24.0
     # skip signals that beat their entry hurdle by more than this (a premium
     # too good to be real is usually a stale book); 0 = off
     max_excess_bps: float = 0.0
@@ -365,7 +369,9 @@ _SCHEMA: Dict[str, Any] = {
         "venue_probe_sec": float,
         "http_keepalive_sec": float,
         # strategy choices (menu: Settings → Strategy)
-        "mode": str,           # simultaneous | entropy_first | volume
+        "mode": str,           # simultaneous | entropy_first | volume | grid
+        "grid_step_bps": float,        # strategy 4: step of the ladder
+        "grid_centre_hours": float,    # strategy 4: centre = median of N h
         "entropy_first_slip_bps": float,
         "max_excess_bps": float,
         "entropy_first_limit": str,    # profit | fixed
@@ -650,7 +656,7 @@ def merge_ticker_profile(raw: dict, prof: dict) -> dict:
     return out
 
 
-EXEC_MODES = ("simultaneous", "entropy_first", "volume")
+EXEC_MODES = ("simultaneous", "entropy_first", "volume", "grid")
 
 
 def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
@@ -870,7 +876,7 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
     exec_mode = str(_get(raw, "execution", "mode", "simultaneous")).strip()
     if exec_mode not in EXEC_MODES:
         raise ConfigError(f"execution.mode must be one of {list(EXEC_MODES)} "
-                          f"/ стратегия: simultaneous, entropy_first или volume")
+                          f"/ стратегия: simultaneous, entropy_first, volume или grid")
     ef_slip = float(_get(raw, "execution", "entropy_first_slip_bps", 5.0))
     max_excess = float(_get(raw, "execution", "max_excess_bps", 0.0))
     if not 0.5 <= ef_slip <= 50.0:
@@ -910,6 +916,12 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
                           "0.1..50, maker_requote_sec 0.5..600, "
                           "maker_inside_bps 0..50, maker_deadman_sec 10..600 "
                           "/ мейкер: значение вне диапазона")
+    grid_step = float(_get(raw, "execution", "grid_step_bps", 4.0))
+    grid_hours = float(_get(raw, "execution", "grid_centre_hours", 24.0))
+    if not (1.0 <= grid_step <= 50.0 and 2.0 <= grid_hours <= 168.0):
+        raise ConfigError("execution: grid_step_bps 1..50, grid_centre_hours "
+                          "2..168 / сетка: шаг от 1 до 50 bps, центр по "
+                          "медиане от 2 до 168 часов")
     # strategy 3 preset is fixed (strategy.py); old keys are ignored
     vol_narrow = strategy_volume_narrow(upper, lower)
     vol_cost = VOLUME_MAX_COST_USD
@@ -1020,6 +1032,8 @@ def load_config(config_file: str = "config.yaml", env_file: str = ".env", *,
         volume_narrow_bps=vol_narrow,
         volume_max_cost_usd=vol_cost,
         max_excess_bps=max_excess,
+        grid_step_bps=grid_step,
+        grid_centre_hours=grid_hours,
         entropy_first_limit=ef_limit,
         entropy_first_keep=xo["entropy_first_keep"],
         imbalance_max=xo["imbalance_max"],

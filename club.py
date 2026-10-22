@@ -739,6 +739,10 @@ def cfg_values(pair=None) -> dict:
             "entropy_first_slip_bps", 5.0)),
         "max_excess": float((c.get("execution") or {}).get(
             "max_excess_bps", 0.0)),
+        "grid_step": float((c.get("execution") or {}).get(
+            "grid_step_bps", 4.0)),
+        "grid_hours": float((c.get("execution") or {}).get(
+            "grid_centre_hours", 24.0)),
         "ef_limit": str((c.get("execution") or {}).get(
             "entropy_first_limit", "profit")),
         "ef_keep": float((c.get("execution") or {}).get(
@@ -2966,12 +2970,15 @@ DEFAULT_TICKS_SEC = 0.5
 # Защита — дополнительные фильтры к любой стратегии, по умолчанию выключены.
 DEFAULT_EF_SLIP_BPS = 5.0
 DEFAULT_MAX_EXCESS_ON = 6.0       # предлагаемое значение при включении
+DEFAULT_GRID_STEP_BPS = 4.0       # сетка: шаг по умолчанию
 
 
 def strategy_texts(venue_title: str, v: dict) -> dict:
     """Описание каждой стратегии: (кратко, подробно)."""
     leg = fmt(v["leg_slip"], True)
     ef = fmt(v["ef_slip"], True)
+    gs = fmt(v.get("grid_step", 4.0), True)
+    gh = fmt(v.get("grid_hours", 24.0), True)
     return {
         "simultaneous": (
             "оба ордера уходят одновременно — так бот работал всегда",
@@ -3028,6 +3035,33 @@ def strategy_texts(venue_title: str, v: dict) -> dict:
             f"[red]Минус:[/red] это покупка объёма, а не заработок. Первые 10 "
             f"сделок цена ещё не\nизмерена и не ограничивается. Объём на "
             f"{venue_title} — такой же, как на Entropy."),
+        "grid": (
+            f"лесенка вокруг средней премии, шаг {gs} bps — не встаёт, "
+            f"когда премия уходит",
+            f"Бот не ждёт, пока премия вернётся в коридор. Он ставит "
+            f"«лесенку» вокруг\nсредней премии (медиана за {gh} ч) с шагом "
+            f"{gs} bps и торгует по ступенькам:\n"
+            f" • премия упала на шаг — купить одну порцию Entropy "
+            f"(продать на {venue_title});\n"
+            f" • упала ещё на шаг — купить ещё одну, и так до лимита "
+            f"позиции;\n"
+            f" • поднялась на шаг — продать одну порцию обратно.\n"
+            f"Каждый круг «купил — продал на шаг выше» зарабатывает один шаг. "
+            f"Если премия\nушла далеко и не вернулась — центр за ней "
+            f"переезжает (медиана), и бот\nпродолжает торговать на новом "
+            f"уровне.\n\n"
+            f"Порция — «максимум на одну сделку» (Размер сделок). Ступенек "
+            f"столько,\nсколько порций помещается в лимит позиции: для сетки "
+            f"нужен лимит хотя бы\nв 3–5 порций. Исполнение — как в "
+            f"стратегии 1 (оба ордера сразу).\n"
+            f"Автокоридор, «послабление на выход» и «спокойный вход» в сетке "
+            f"не действуют.\n\n"
+            f"[green]Плюс:[/green] торгует каждый час, ловит и мелкие колебания, "
+            f"и большие уходы.\n"
+            f"[red]Минус:[/red] если премия долго уходит в одну сторону, "
+            f"позиция набирается до\nлимита и висит в минусе по рынку, пока "
+            f"премия не развернётся. Защищает стоп\nпо убытку. Проверено "
+            f"только на истории (тиках v2), начните с тестового режима."),
     }
 
 
@@ -3153,8 +3187,9 @@ def protection_detail(key: str, v: dict) -> None:
 def strategy_help() -> None:
     header("Настройки · стратегия · как выбрать")
     console.print("""  [bold]Стратегия[/bold] — как бот входит в сделку. Включена всегда ровно одна,
-  она общая для всех пар. Сигнал (когда входить) у всех трёх один и тот же —
-  пороги пары. Разница только в том, как отправляются ордера.
+  она общая для всех пар. Сигнал (когда входить) у стратегий 1–3 один и тот
+  же — пороги пары или автокоридор; разница в том, как отправляются ордера.
+  У стратегии 4 «Сетка» свой сигнал — лесенка.
 
   [bold]Что такое проскальзывание.[/bold] Бот видит цену и отправляет ордер,
   но пока ордер летит до биржи, цена может уйти. Разница между ценой плана
@@ -3167,6 +3202,8 @@ def strategy_help() -> None:
      «ожидалось»: значит, основная потеря — на цене исполнения.
    • Стратегия 3 — если нужен объём и вы готовы за него платить, но не
      дороже $1 за $10 000 объёма.
+   • Стратегия 4 — сетка: сама решает, когда входить (лесенка вокруг
+     средней премии), торгует ровно и не встаёт, когда премия уходит.
 
   [bold]Защита[/bold] — дополнительные фильтры. Сочетаются с любой стратегией
   и друг с другом, по умолчанию выключены. Каждый уменьшает число сделок.
@@ -3181,6 +3218,38 @@ def ef_limit_text(v: dict) -> str:
         return (f"из прибыли сделки (сохранить {v['ef_keep']:.0%} полосы, до "
                 f"{fmt(3 * v['ef_slip'], True)} bps)")
     return f"фиксированная, {fmt(v['ef_slip'], True)} bps"
+
+
+def grid_settings(v: dict) -> None:
+    """Strategy 4: step of the ladder and the hours of its centre."""
+    header("Настройки · сетка")
+    console.print("  [dim]Шаг — на сколько bps премия должна сдвинуться, "
+                  "чтобы бот купил или продал\n  следующую порцию. Меньше "
+                  "шаг — больше сделок и объёма, но каждая зарабатывает\n"
+                  "  меньше; комиссия Entropy съедает до 1.7 bps круга. На "
+                  "истории ANTH и OAI\n  лучше всего было 3–5 bps. По "
+                  f"умолчанию {fmt(DEFAULT_GRID_STEP_BPS)}.\n\n"
+                  "  Центр — медиана премии за N часов. Длиннее — сетка "
+                  "спокойнее и дольше\n  держит позицию, короче — быстрее "
+                  "переезжает за рынком. По умолчанию 24.[/dim]\n")
+    changes = []
+    while True:
+        step = ask_number("Шаг, bps", v["grid_step"])
+        if 1 <= step <= 50:
+            break
+        console.print("  [dim]От 1 до 50 bps.[/dim]")
+    if step != v["grid_step"]:
+        changes.append(("execution", "grid_step_bps", fmt(step)))
+    while True:
+        hours = ask_number("Центр: медиана за, часов", v["grid_hours"])
+        if 2 <= hours <= 168:
+            break
+        console.print("  [dim]От 2 до 168 часов.[/dim]")
+    if hours != v["grid_hours"]:
+        changes.append(("execution", "grid_centre_hours", fmt(hours)))
+    if changes:
+        apply_changes(changes)
+        pause()
 
 
 def strategy_menu() -> None:
@@ -3207,13 +3276,13 @@ def strategy_menu() -> None:
             console.print(f"     [dim]{texts[m][0]}[/dim]")
         console.print("\n  [bold]Автокоридор — когда входить[/bold] [dim]— "
                       "главное для заработка[/dim]")
-        console.print(f"  4  {autoband_label(ab)[0].upper()}"
+        console.print(f"  5  {autoband_label(ab)[0].upper()}"
                       f"{autoband_label(ab)[1:]} — сменить режим "
                       f"(Объём / Баланс / Доход)", markup=False)
         tight = mode in ("entropy_first", "volume")
         if tight:
             console.print("\n  [bold]Настройка стратегии[/bold]")
-            console.print(f"  5  Насколько хуже рынка можно купить или продать "
+            console.print(f"  6  Насколько хуже рынка можно купить или продать "
                           f"на Entropy: {ef_limit_text(v)}")
         if mode == "volume":
             cost, n = volume_cost_now(v)
@@ -3222,18 +3291,24 @@ def strategy_menu() -> None:
                         f"ещё не измерена ({n} сделок из 10)")
             console.print(f"     [dim]Реальная цена объёма по сделкам: "
                           f"{measured}. Коридор и допустимую цену задаёт "
-                          f"Автокоридор (пункт 4).[/dim]")
+                          f"Автокоридор (пункт 5).[/dim]")
+        if mode == "grid":
+            console.print("\n  [bold]Настройка стратегии[/bold]")
+            console.print(f"  6  Сетка: шаг {fmt(v['grid_step'], True)} bps, "
+                          f"центр — медиана за {fmt(v['grid_hours'], True)} ч")
+            console.print("     [dim]Автокоридор (пункт 5) в сетке не "
+                          "действует.[/dim]")
         warn = miss_warning(mode, v["ticker"])
         if warn:
             console.print(f"\n  [yellow]{warn}.[/yellow]")
         console.print("\n  [bold]Защита[/bold] [dim]— к любой стратегии, по "
                       "умолчанию выключена[/dim]")
-        console.print(f"  6  {PROTECTION_TEXTS['slipgate'][0]}: "
+        console.print(f"  7  {PROTECTION_TEXTS['slipgate'][0]}: "
                       + ("[bold]вкл[/bold]" if v["slipgate"] else "выкл"))
-        console.print(f"  7  {PROTECTION_TEXTS['excess'][0]}: "
+        console.print(f"  8  {PROTECTION_TEXTS['excess'][0]}: "
                       + (f"[bold]вкл, {fmt(v['max_excess'], True)} bps[/bold]"
                          if v["max_excess"] > 0 else "выкл"))
-        console.print("\n  8  Как выбрать — коротко о стратегиях и "
+        console.print("\n  9  Как выбрать — коротко о стратегиях и "
                       "проскальзывании", markup=False)
         console.print("  0  Назад\n", markup=False)
         choice = ask()
@@ -3243,7 +3318,7 @@ def strategy_menu() -> None:
         if choice in by_num:
             strategy_detail(by_num[choice], v)
             continue
-        if choice == "5" and tight:
+        if choice == "6" and tight:
             header("Настройки · худшая цена на Entropy")
             console.print("  [dim]Для стратегий 2 и 3: насколько хуже цены "
                           "сигнала бот согласен купить или\n  продать на "
@@ -3279,13 +3354,15 @@ def strategy_menu() -> None:
             if changes:
                 apply_changes(changes)
                 pause()
-        elif choice == "4":
+        elif choice == "6" and mode == "grid":
+            grid_settings(v)
+        elif choice == "5":
             autoband_menu()
-        elif choice == "6":
-            protection_detail("slipgate", v)
         elif choice == "7":
-            protection_detail("excess", v)
+            protection_detail("slipgate", v)
         elif choice == "8":
+            protection_detail("excess", v)
+        elif choice == "9":
             strategy_help()
 
 
