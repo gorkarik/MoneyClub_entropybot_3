@@ -2009,7 +2009,9 @@ def action_analysis() -> None:
                        ("5", "Бэктест — что дали бы текущие настройки и "
                              "варианты на записанных стаканах"),
                        ("6", "Сменить пару — другая пара для Анализа, "
-                             "Настроек и Старта")])
+                             "Настроек и Старта"),
+                       ("7", "Скачать данные на компьютер — все пары: сделки, "
+                             "стаканы, журналы, крупные сделки")])
         if choice == "1":
             action_calibration()
         elif choice == "2":
@@ -2026,7 +2028,109 @@ def action_analysis() -> None:
         elif choice == "6":
             pick_pair_for_menus("Анализ · пара")
             continue
+        elif choice == "7":
+            action_export()
+            continue
         return
+
+
+EXPORT_PERIODS = {"1": (1, "сутки"), "2": (3, "3 дня"), "3": (7, "неделя"),
+                  "4": (30, "месяц"), "5": (0, "всё время")}
+EXPORT_KINDS = {"1": ("all", "Всё для анализа — сделки, сессии, балансы, "
+                             "стаканы (тики), минутки, журнал, крупные "
+                             "сделки, настройки"),
+                "2": ("flows", "Только крупные сделки на Entropy "
+                               "(logs/flows)")}
+EXPORT_DIR = "exports"
+
+
+def export_build(kind: str, days: float, label: str) -> list:
+    """Собрать архив(ы) данных: пути частей (пусто — данных нет)."""
+    from entropy_arb import export
+    since = time.time() - days * 86400 if days > 0 else 0.0
+    log_dir = os.path.dirname(cfg_values()["trades_csv"]) or LOG_DIR
+    return export.build(APP_DIR, log_dir, since,
+                        os.path.join(APP_DIR, EXPORT_DIR), kind, label)
+
+
+def export_to_telegram(parts: list, label: str) -> str:
+    """Отправить части архива в Telegram; '' — отправлено, иначе причина."""
+    from entropy_arb import export
+    env = read_env()
+    token = (env.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = (env.get("TELEGRAM_CHAT_ID") or "").strip()
+    if not (token and chat):
+        return "Telegram не настроен"
+    for i, p in enumerate(parts, 1):
+        if os.path.getsize(p) > 50 * 1024 * 1024:
+            return (f"{os.path.basename(p)} больше 50 МБ — Telegram такие "
+                    f"файлы не принимает")
+        cap = f"Mriya · данные за {label}" + (
+            f" · часть {i} из {len(parts)}" if len(parts) > 1 else "")
+        d = export.tg_send_document(token, chat, p, cap)
+        if not d.get("ok"):
+            return str(d.get("description") or "Telegram не принял файл")
+    return ""
+
+
+def action_export() -> None:
+    """Скачать данные: архив за период — в Telegram и/или командой scp."""
+    from entropy_arb import export
+    header("Анализ · скачать данные")
+    console.print("  [dim]Бот соберёт архив .tar.gz со всем, что записал за "
+                  "период, по всем парам.\n  Ключей (.env) в архиве нет. "
+                  "Открыть на компьютере: 7-Zip или WinRAR (Windows),\n  "
+                  "двойной щелчок (Mac). Внутри README.txt — что где "
+                  "лежит.[/dim]\n")
+    k = menu([(key, text) for key, (_w, text) in EXPORT_KINDS.items()])
+    if k not in EXPORT_KINDS:
+        return
+    kind = EXPORT_KINDS[k][0]
+    header("Анализ · скачать данные · период")
+    p = menu([(key, f"За {t}") for key, (_d, t) in EXPORT_PERIODS.items()])
+    if p not in EXPORT_PERIODS:
+        return
+    days, label = EXPORT_PERIODS[p]
+    with console.status("  Собираю архив… (до пары минут на месяц стаканов)"):
+        try:
+            parts = export_build(kind, days, label)
+        except Exception as e:
+            parts, err = [], e
+        else:
+            err = None
+    header("Анализ · скачать данные")
+    if err is not None:
+        console.print(f"  [red]Архив не собрался: {err}[/red]\n")
+        pause()
+        return
+    if not parts:
+        console.print(f"  За {label} данных нет.\n")
+        pause()
+        return
+    total = sum(os.path.getsize(x) for x in parts)
+    console.print(f"  Готово: {len(parts)} "
+                  f"{'файл' if len(parts) == 1 else 'файла(ов)'}, "
+                  f"{export.human_size(total)}")
+    for x in parts:
+        console.print(f"   • {x}  [dim]{export.human_size(os.path.getsize(x))}"
+                      f"[/dim]")
+    console.print()
+    env = read_env()
+    if env.get("TELEGRAM_BOT_TOKEN") and env.get("TELEGRAM_CHAT_ID"):
+        if confirm("Прислать в Telegram (оттуда — сохранить на компьютер)?",
+                   default=True):
+            with console.status("  Отправляю в Telegram…"):
+                why = export_to_telegram(parts, label)
+            console.print("  [green]Отправлено в Telegram.[/green]\n" if not why
+                          else f"  [yellow]В Telegram не ушло: {why}.[/yellow]"
+                               f"\n")
+    console.print("  [bold]Или скачайте командой на компьютере[/bold] "
+                  "[dim](Windows: PowerShell; Mac: Терминал;\n  файл "
+                  "появится в папке, где открыт терминал):[/dim]\n")
+    print("  " + export.scp_line(parts) + "\n")
+    console.print("  [dim]Архивы хранятся 3 дня в папке exports, потом "
+                  "удаляются сами.[/dim]\n")
+    pause()
 
 
 BACKTEST_PERIODS = {"1": (1, "сутки"), "2": (3, "3 дня"), "3": (7, "неделя"),

@@ -320,6 +320,7 @@ class Control:
             [("📏 Лимиты", "limits"), ("🛑 Стоп-лосс", "stoploss")],
             [("📊 Статус", "status"), ("📄 Отчёт", "report"),
              ("❓ Помощь", "help")],
+            [("📦 Скачать данные", "export")],
         ]
         self.api.send("\n".join(lines), rows, html_text=True)
 
@@ -831,6 +832,48 @@ class Control:
                       + (out or "Сделок за период нет."),
                       [[("Другой период", "report"), MENU_BTN]])
 
+    def export_screen(self) -> None:
+        rows = []
+        for kkey, (kind, _t) in club.EXPORT_KINDS.items():
+            title = "Всё" if kind == "all" else "Крупные сделки"
+            rows.append([(f"{title} · {label}", f"exp:{kkey}:{pkey}")
+                         for pkey, (_d, label) in club.EXPORT_PERIODS.items()
+                         if pkey in ("1", "3", "4")])
+        rows.append([MENU_BTN])
+        self.api.send(
+            "📦 Скачать данные — архив придёт сюда файлом, его можно "
+            "сохранить на компьютер.\n\n"
+            "• Всё: сделки, сессии, балансы, стаканы, минутки, журнал, "
+            "крупные сделки, настройки — по всем парам. Ключей в архиве "
+            "нет.\n"
+            "• Крупные сделки: только logs/flows.\n\n"
+            "Другие периоды (3 дня, всё время) — в меню на сервере: "
+            "Анализ → 7.", rows)
+
+    def export(self, arg: str) -> None:
+        kkey, _, pkey = arg.partition(":")
+        if kkey not in club.EXPORT_KINDS or pkey not in club.EXPORT_PERIODS:
+            return
+        kind = club.EXPORT_KINDS[kkey][0]
+        days, label = club.EXPORT_PERIODS[pkey]
+        self.api.send(f"📦 Собираю архив за {label}…")
+        try:
+            parts = club.export_build(kind, days, label)
+        except Exception as e:
+            self.api.send(f"Архив не собрался: {e}", [[MENU_BTN]])
+            return
+        if not parts:
+            self.api.send(f"За {label} данных нет.", [[MENU_BTN]])
+            return
+        why = club.export_to_telegram(parts, label)
+        self.api.send(("✔ Архив отправлен" + (f" ({len(parts)} части)"
+                                              if len(parts) > 1 else "")
+                       + ". Откройте файл и сохраните на компьютер.")
+                      if not why else f"В Telegram не ушло: {why}. "
+                      "Скачать можно командой из меню на сервере "
+                      "(Анализ → 7).",
+                      [[("📦 Ещё", "export"), MENU_BTN]], new=True)
+
     # -- разбор
     def handle(self, kind: str, text: str) -> None:
         if kind == "text":
@@ -903,6 +946,10 @@ class Control:
             self.report_screen()
         elif cmd.startswith("rep:"):
             self.report(cmd[4:])
+        elif cmd in ("/export", "export"):
+            self.export_screen()
+        elif cmd.startswith("exp:"):
+            self.export(cmd[4:])
         elif kind == "text":
             self.menu()                  # любое другое сообщение — меню
 
