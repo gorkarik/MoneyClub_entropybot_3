@@ -735,12 +735,15 @@ def main():
         lo = num(g(cfg, "thresholds", "lower_bps"))
         if None not in (mid, up, lo):
             sell_h = mid + up + fee_ent + fee_hdg
-            buy_h = lo - mid + fee_ent + fee_hdg
+            # buy: Entropy ask over hedge bid (the exact reverse of the
+            # recorded buy edge) at or below midline − lower − fees
+            buy_h = mid - lo - fee_ent - fee_hdg
             ns = sum(1 for x in se if x is not None and x >= sell_h)
-            nb = sum(1 for x in be if x is not None and x >= buy_h)
+            nb = sum(1 for x in be
+                     if x is not None and -x / (1 + x / 1e4) <= buy_h)
             w(f"минут, где SELL entropy проходил порог {sell_h:+.2f}: "
-              f"{ns} из {len(minutes)}; BUY entropy (порог {buy_h:+.2f}): "
-              f"{nb}")
+              f"{ns} из {len(minutes)}; BUY entropy (премия ≤ "
+              f"{buy_h:+.2f}): {nb}")
         sp = defaultdict(list)
         for m in minutes:
             for v in ("entropy", "hedge"):

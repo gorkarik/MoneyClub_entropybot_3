@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""MoneyClub версия 3 — меню управления ботом.
+"""Mriya — меню управления ботом.
 
-Запуск: команда `moneyclub` (ставится install.sh) или `venv/bin/python club.py`.
+Запуск: команда `Mriya` (ставится install.sh) или `venv/bin/python club.py`.
 
 Entropy — всегда одна нога; вторая — Lighter RH (Robinhood chain) или Ondo,
 выбирается при Старте вместе с тикером. У каждой пары «биржа + тикер»
@@ -111,21 +111,21 @@ ENV_EXAMPLE = ".env.example"
 LOG_DIR = "logs"
 STDERR_LOG = os.path.join(LOG_DIR, "stderr.log")
 
-APP_NAME = "MoneyClub_entropybot_3"
-SUBTITLE = "версия 3"   # мелкая подпись рядом с заставкой
+APP_NAME = "Mriya"
+SUBTITLE = ""   # мелкая подпись рядом с заставкой (пусто — без подписи)
 
 
 def _tmux_name() -> str:
     """Имя tmux-сокета: своё у каждой папки, чтобы Старт этого бота не
-    закрывал сессию другого (moneyclub на том же сервере — отдельно)."""
-    base = os.path.basename(APP_DIR.rstrip("/")) or "moneyclub3"
-    if base in ("money-club-3", "MoneyClub_entropybot_3"):
-        return "moneyclub3"
-    return "moneyclub3-" + re.sub(r"[^A-Za-z0-9_-]", "", base).lower()
+    закрывал сессию другого бота на том же сервере."""
+    base = os.path.basename(APP_DIR.rstrip("/")) or "mriya"
+    if base.lower() == "mriya":
+        return "mriya"
+    return "mriya-" + re.sub(r"[^A-Za-z0-9_-]", "", base).lower()
 
 
 TMUX_SOCKET = TMUX_SESSION = _tmux_name()
-TMUX_CONF = os.path.join(APP_DIR, ".moneyclub-tmux.conf")
+TMUX_CONF = os.path.join(APP_DIR, ".mriya-tmux.conf")
 
 DEFAULT_THRESHOLDS = {"midline_bps": -7.0, "upper_bps": 4.0, "lower_bps": 4.5}
 DEFAULT_POSITION_USD = 25.0
@@ -228,24 +228,18 @@ EXEC_RESET = "20"
 STOP_WAIT_LIVE_SEC = 90           # закрытие позиций при Стопе + итог сессии
 
 BANNER = r"""
- ███╗   ███╗ ██████╗ ███╗   ██╗███████╗██╗   ██╗
- ████╗ ████║██╔═══██╗████╗  ██║██╔════╝╚██╗ ██╔╝
- ██╔████╔██║██║   ██║██╔██╗ ██║█████╗   ╚████╔╝
- ██║╚██╔╝██║██║   ██║██║╚██╗██║██╔══╝    ╚██╔╝
- ██║ ╚═╝ ██║╚██████╔╝██║ ╚████║███████╗   ██║
- ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝
-        ██████╗██╗     ██╗   ██╗██████╗
-       ██╔════╝██║     ██║   ██║██╔══██╗
-       ██║     ██║     ██║   ██║██████╔╝
-       ██║     ██║     ██║   ██║██╔══██╗
-       ╚██████╗███████╗╚██████╔╝██████╔╝
-        ╚═════╝╚══════╝ ╚═════╝ ╚═════╝
+ ███╗   ███╗ ██████╗  ██╗ ██╗   ██╗  █████╗
+ ████╗ ████║ ██╔══██╗ ██║ ╚██╗ ██╔╝ ██╔══██╗
+ ██╔████╔██║ ██████╔╝ ██║  ╚████╔╝  ███████║
+ ██║╚██╔╝██║ ██╔══██╗ ██║   ╚██╔╝   ██╔══██║
+ ██║ ╚═╝ ██║ ██║  ██║ ██║    ██║    ██║  ██║
+ ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝    ╚═╝    ╚═╝  ╚═╝
 """
-BANNER_COMPACT = "\n  M O N E Y   C L U B"
+BANNER_COMPACT = "\n  M R I Y A"
 BANNER_STYLE = "bold bright_green"    # заставка зелёная
 
 TMUX_CONF_TEXT = """\
-# Создаётся автоматически меню MoneyClub 3 — вручную не редактировать.
+# Создаётся автоматически меню Mriya — вручную не редактировать.
 set -g default-terminal "screen-256color"
 set -g escape-time 0
 set -g mouse off
@@ -352,13 +346,13 @@ def clear() -> None:
 
 
 def print_banner() -> None:
-    """Зелёная заставка MONEY CLUB; мелкая подпись «версия 3» — справа от
+    """Зелёная заставка MRIYA; мелкая подпись (если задана) — справа от
     последней строки букв."""
     wide = console.width >= 52
     lines = (BANNER if wide else BANNER_COMPACT).rstrip("\n").split("\n")
     for i, line in enumerate(lines):
         t = Text(line, style=BANNER_STYLE)
-        if i == len(lines) - 1:
+        if i == len(lines) - 1 and SUBTITLE:
             t.append("  " + SUBTITLE, style="dim cyan")
         console.print(t)
     nick = bot_nickname()
@@ -534,7 +528,7 @@ def _pair_text(pair, entropy_name: str, hedge_names: str, base: dict,
     hfee_line = ""
     title = VENUE_TITLES.get(venue, venue)
     return f"""\
-# MoneyClub 3 · настройки пары {ticker} · {leg1} ↔ {title}
+# Mriya · настройки пары {ticker} · {leg1} ↔ {title}
 # Меню меняет этот файл само. Пороги относятся только к этой паре: у разных
 # тикеров и у разных бирж разная премия, переносить их нельзя.
 
@@ -739,6 +733,10 @@ def cfg_values(pair=None) -> dict:
             "entropy_first_slip_bps", 5.0)),
         "max_excess": float((c.get("execution") or {}).get(
             "max_excess_bps", 0.0)),
+        "grid_step": float((c.get("execution") or {}).get(
+            "grid_step_bps", 4.0)),
+        "grid_hours": float((c.get("execution") or {}).get(
+            "grid_centre_hours", 24.0)),
         "ef_limit": str((c.get("execution") or {}).get(
             "entropy_first_limit", "profit")),
         "ef_keep": float((c.get("execution") or {}).get(
@@ -930,7 +928,7 @@ def _env_template() -> str:
     if os.path.exists(ENV_EXAMPLE):
         with open(ENV_EXAMPLE, encoding="utf-8") as fh:
             return fh.read()
-    return "# MoneyClub 3 — ключи. Заполняются через меню.\n" + \
+    return "# Mriya — ключи. Заполняются через меню.\n" + \
         "".join(f"{k}=\n" for k in ENV_KEYS)
 
 
@@ -1189,7 +1187,7 @@ def trim_log(path: str, max_bytes: int = STDERR_MAX_BYTES,
 # ------------------------------------------------- автоперезапуск
 # Меню при Старте записывает, что бот должен работать (logs/.autorun), при
 # Стопе — стирает. Раз в 5 минут и после перезагрузки сервера cron вызывает
-# `moneyclub --resume`: если бот должен работать, а его нет (упал, сервер
+# `Mriya --resume`: если бот должен работать, а его нет (упал, сервер
 # перезагрузился), он запускается снова в том же режиме и с той же парой.
 # Больше AUTORUN_MAX перезапусков за час — автоперезапуск выключается и
 # приходит сообщение в Telegram: значит, бот падает сразу после старта.
@@ -1239,7 +1237,7 @@ def _tg_notify(text: str) -> None:
 
 
 def resume_main() -> int:
-    """`moneyclub --resume` (cron): поднять бота, если он должен работать."""
+    """`Mriya --resume` (cron): поднять бота, если он должен работать."""
     import fcntl
     os.chdir(APP_DIR)
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -1264,7 +1262,7 @@ def resume_main() -> int:
         os.replace(AUTORUN_FILE, AUTORUN_FILE + ".off")
         _tg_notify(f"🚨 Бот падает сразу после запуска ({len(recent)} раза "
                    f"за час) — автоперезапуск выключен. Откройте меню "
-                   f"(команда moneyclub) и посмотрите ошибку.")
+                   f"(команда Mriya) и посмотрите ошибку.")
         return 1
     recent.append(now)
     _atomic_write(AUTORUN_LOG, " ".join(f"{t:.0f}" for t in recent))
@@ -1274,7 +1272,7 @@ def resume_main() -> int:
                f"сервера) и запущен снова: {pair_label((venue, ticker))}, "
                f"{what}." if ok else
                f"🚨 Бот остановился и не смог запуститься снова: "
-               f"{pair_label((venue, ticker))}. Откройте меню (moneyclub).")
+               f"{pair_label((venue, ticker))}. Откройте меню (Mriya).")
     return 0 if ok else 1
 
 
@@ -1531,7 +1529,7 @@ def _http_json(url: str, payload: dict = None, timeout: float = 8.0):
     data = None if payload is None else json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json",
-                                 "User-Agent": "moneyclub3"})
+                                 "User-Agent": "mriya"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -1982,7 +1980,7 @@ def open_dashboard(skip_intro: bool = False) -> None:
             console.print(f"  [dim]{err}[/dim]")
         console.print("  Бот при этом работает. Попробуйте ещё раз; если не "
                       "выходит — закройте окно терминала\n  и зайдите на "
-                      "сервер заново (команда moneyclub).")
+                      "сервер заново (команда Mriya).")
         pause()
 
 
@@ -2011,7 +2009,9 @@ def action_analysis() -> None:
                        ("5", "Бэктест — что дали бы текущие настройки и "
                              "варианты на записанных стаканах"),
                        ("6", "Сменить пару — другая пара для Анализа, "
-                             "Настроек и Старта")])
+                             "Настроек и Старта"),
+                       ("7", "Скачать данные на компьютер — все пары: сделки, "
+                             "стаканы, журналы, крупные сделки")])
         if choice == "1":
             action_calibration()
         elif choice == "2":
@@ -2028,7 +2028,109 @@ def action_analysis() -> None:
         elif choice == "6":
             pick_pair_for_menus("Анализ · пара")
             continue
+        elif choice == "7":
+            action_export()
+            continue
         return
+
+
+EXPORT_PERIODS = {"1": (1, "сутки"), "2": (3, "3 дня"), "3": (7, "неделя"),
+                  "4": (30, "месяц"), "5": (0, "всё время")}
+EXPORT_KINDS = {"1": ("all", "Всё для анализа — сделки, сессии, балансы, "
+                             "стаканы (тики), минутки, журнал, крупные "
+                             "сделки, настройки"),
+                "2": ("flows", "Только крупные сделки на Entropy "
+                               "(logs/flows)")}
+EXPORT_DIR = "exports"
+
+
+def export_build(kind: str, days: float, label: str) -> list:
+    """Собрать архив(ы) данных: пути частей (пусто — данных нет)."""
+    from entropy_arb import export
+    since = time.time() - days * 86400 if days > 0 else 0.0
+    log_dir = os.path.dirname(cfg_values()["trades_csv"]) or LOG_DIR
+    return export.build(APP_DIR, log_dir, since,
+                        os.path.join(APP_DIR, EXPORT_DIR), kind, label)
+
+
+def export_to_telegram(parts: list, label: str) -> str:
+    """Отправить части архива в Telegram; '' — отправлено, иначе причина."""
+    from entropy_arb import export
+    env = read_env()
+    token = (env.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = (env.get("TELEGRAM_CHAT_ID") or "").strip()
+    if not (token and chat):
+        return "Telegram не настроен"
+    for i, p in enumerate(parts, 1):
+        if os.path.getsize(p) > 50 * 1024 * 1024:
+            return (f"{os.path.basename(p)} больше 50 МБ — Telegram такие "
+                    f"файлы не принимает")
+        cap = f"Mriya · данные за {label}" + (
+            f" · часть {i} из {len(parts)}" if len(parts) > 1 else "")
+        d = export.tg_send_document(token, chat, p, cap)
+        if not d.get("ok"):
+            return str(d.get("description") or "Telegram не принял файл")
+    return ""
+
+
+def action_export() -> None:
+    """Скачать данные: архив за период — в Telegram и/или командой scp."""
+    from entropy_arb import export
+    header("Анализ · скачать данные")
+    console.print("  [dim]Бот соберёт архив .tar.gz со всем, что записал за "
+                  "период, по всем парам.\n  Ключей (.env) в архиве нет. "
+                  "Открыть на компьютере: 7-Zip или WinRAR (Windows),\n  "
+                  "двойной щелчок (Mac). Внутри README.txt — что где "
+                  "лежит.[/dim]\n")
+    k = menu([(key, text) for key, (_w, text) in EXPORT_KINDS.items()])
+    if k not in EXPORT_KINDS:
+        return
+    kind = EXPORT_KINDS[k][0]
+    header("Анализ · скачать данные · период")
+    p = menu([(key, f"За {t}") for key, (_d, t) in EXPORT_PERIODS.items()])
+    if p not in EXPORT_PERIODS:
+        return
+    days, label = EXPORT_PERIODS[p]
+    with console.status("  Собираю архив… (до пары минут на месяц стаканов)"):
+        try:
+            parts = export_build(kind, days, label)
+        except Exception as e:
+            parts, err = [], e
+        else:
+            err = None
+    header("Анализ · скачать данные")
+    if err is not None:
+        console.print(f"  [red]Архив не собрался: {err}[/red]\n")
+        pause()
+        return
+    if not parts:
+        console.print(f"  За {label} данных нет.\n")
+        pause()
+        return
+    total = sum(os.path.getsize(x) for x in parts)
+    console.print(f"  Готово: {len(parts)} "
+                  f"{'файл' if len(parts) == 1 else 'файла(ов)'}, "
+                  f"{export.human_size(total)}")
+    for x in parts:
+        console.print(f"   • {x}  [dim]{export.human_size(os.path.getsize(x))}"
+                      f"[/dim]")
+    console.print()
+    env = read_env()
+    if env.get("TELEGRAM_BOT_TOKEN") and env.get("TELEGRAM_CHAT_ID"):
+        if confirm("Прислать в Telegram (оттуда — сохранить на компьютер)?",
+                   default=True):
+            with console.status("  Отправляю в Telegram…"):
+                why = export_to_telegram(parts, label)
+            console.print("  [green]Отправлено в Telegram.[/green]\n" if not why
+                          else f"  [yellow]В Telegram не ушло: {why}.[/yellow]"
+                               f"\n")
+    console.print("  [bold]Или скачайте командой на компьютере[/bold] "
+                  "[dim](Windows: PowerShell; Mac: Терминал;\n  файл "
+                  "появится в папке, где открыт терминал):[/dim]\n")
+    print("  " + export.scp_line(parts) + "\n")
+    console.print("  [dim]Архивы хранятся 3 дня в папке exports, потом "
+                  "удаляются сами.[/dim]\n")
+    pause()
 
 
 BACKTEST_PERIODS = {"1": (1, "сутки"), "2": (3, "3 дня"), "3": (7, "неделя"),
@@ -2193,7 +2295,7 @@ def action_calibration() -> None:
     header(f"Анализ / калибровка · {t}")
     line = "─" * 22
     print(f"  {line} скопируйте отсюда {line}\n")
-    print(f"MONEYCLUB 3 · анализ {t} · период: {label}")
+    print(f"MRIYA · анализ {t} · период: {label}")
     print(f"Текущие настройки: midline {fmt(v['midline_bps'])} | upper "
           f"{fmt(v['upper_bps'])} | lower {fmt(v['lower_bps'])} | лимит позиции "
           f"{usd(v['pos_entropy'])} | сделка до {usd(v['order'])}")
@@ -2966,12 +3068,15 @@ DEFAULT_TICKS_SEC = 0.5
 # Защита — дополнительные фильтры к любой стратегии, по умолчанию выключены.
 DEFAULT_EF_SLIP_BPS = 5.0
 DEFAULT_MAX_EXCESS_ON = 6.0       # предлагаемое значение при включении
+DEFAULT_GRID_STEP_BPS = 4.0       # сетка: шаг по умолчанию
 
 
 def strategy_texts(venue_title: str, v: dict) -> dict:
     """Описание каждой стратегии: (кратко, подробно)."""
     leg = fmt(v["leg_slip"], True)
     ef = fmt(v["ef_slip"], True)
+    gs = fmt(v.get("grid_step", 4.0), True)
+    gh = fmt(v.get("grid_hours", 24.0), True)
     return {
         "simultaneous": (
             "оба ордера уходят одновременно — так бот работал всегда",
@@ -3028,6 +3133,33 @@ def strategy_texts(venue_title: str, v: dict) -> dict:
             f"[red]Минус:[/red] это покупка объёма, а не заработок. Первые 10 "
             f"сделок цена ещё не\nизмерена и не ограничивается. Объём на "
             f"{venue_title} — такой же, как на Entropy."),
+        "grid": (
+            f"лесенка вокруг средней премии, шаг {gs} bps — не встаёт, "
+            f"когда премия уходит",
+            f"Бот не ждёт, пока премия вернётся в коридор. Он ставит "
+            f"«лесенку» вокруг\nсредней премии (медиана за {gh} ч) с шагом "
+            f"{gs} bps и торгует по ступенькам:\n"
+            f" • премия упала на шаг — купить одну порцию Entropy "
+            f"(продать на {venue_title});\n"
+            f" • упала ещё на шаг — купить ещё одну, и так до лимита "
+            f"позиции;\n"
+            f" • поднялась на шаг — продать одну порцию обратно.\n"
+            f"Каждый круг «купил — продал на шаг выше» зарабатывает один шаг. "
+            f"Если премия\nушла далеко и не вернулась — центр за ней "
+            f"переезжает (медиана), и бот\nпродолжает торговать на новом "
+            f"уровне.\n\n"
+            f"Порция — «максимум на одну сделку» (Размер сделок). Ступенек "
+            f"столько,\nсколько порций помещается в лимит позиции: для сетки "
+            f"нужен лимит хотя бы\nв 3–5 порций. Исполнение — как в "
+            f"стратегии 1 (оба ордера сразу).\n"
+            f"Автокоридор, «послабление на выход» и «спокойный вход» в сетке "
+            f"не действуют.\n\n"
+            f"[green]Плюс:[/green] торгует каждый час, ловит и мелкие колебания, "
+            f"и большие уходы.\n"
+            f"[red]Минус:[/red] если премия долго уходит в одну сторону, "
+            f"позиция набирается до\nлимита и висит в минусе по рынку, пока "
+            f"премия не развернётся. Защищает стоп\nпо убытку. Проверено "
+            f"только на истории (тиках v2), начните с тестового режима."),
     }
 
 
@@ -3153,8 +3285,9 @@ def protection_detail(key: str, v: dict) -> None:
 def strategy_help() -> None:
     header("Настройки · стратегия · как выбрать")
     console.print("""  [bold]Стратегия[/bold] — как бот входит в сделку. Включена всегда ровно одна,
-  она общая для всех пар. Сигнал (когда входить) у всех трёх один и тот же —
-  пороги пары. Разница только в том, как отправляются ордера.
+  она общая для всех пар. Сигнал (когда входить) у стратегий 1–3 один и тот
+  же — пороги пары или автокоридор; разница в том, как отправляются ордера.
+  У стратегии 4 «Сетка» свой сигнал — лесенка.
 
   [bold]Что такое проскальзывание.[/bold] Бот видит цену и отправляет ордер,
   но пока ордер летит до биржи, цена может уйти. Разница между ценой плана
@@ -3167,6 +3300,8 @@ def strategy_help() -> None:
      «ожидалось»: значит, основная потеря — на цене исполнения.
    • Стратегия 3 — если нужен объём и вы готовы за него платить, но не
      дороже $1 за $10 000 объёма.
+   • Стратегия 4 — сетка: сама решает, когда входить (лесенка вокруг
+     средней премии), торгует ровно и не встаёт, когда премия уходит.
 
   [bold]Защита[/bold] — дополнительные фильтры. Сочетаются с любой стратегией
   и друг с другом, по умолчанию выключены. Каждый уменьшает число сделок.
@@ -3183,6 +3318,38 @@ def ef_limit_text(v: dict) -> str:
     return f"фиксированная, {fmt(v['ef_slip'], True)} bps"
 
 
+def grid_settings(v: dict) -> None:
+    """Strategy 4: step of the ladder and the hours of its centre."""
+    header("Настройки · сетка")
+    console.print("  [dim]Шаг — на сколько bps премия должна сдвинуться, "
+                  "чтобы бот купил или продал\n  следующую порцию. Меньше "
+                  "шаг — больше сделок и объёма, но каждая зарабатывает\n"
+                  "  меньше; комиссия Entropy съедает до 1.7 bps круга. На "
+                  "истории ANTH и OAI\n  лучше всего было 3–5 bps. По "
+                  f"умолчанию {fmt(DEFAULT_GRID_STEP_BPS)}.\n\n"
+                  "  Центр — медиана премии за N часов. Длиннее — сетка "
+                  "спокойнее и дольше\n  держит позицию, короче — быстрее "
+                  "переезжает за рынком. По умолчанию 24.[/dim]\n")
+    changes = []
+    while True:
+        step = ask_number("Шаг, bps", v["grid_step"])
+        if 1 <= step <= 50:
+            break
+        console.print("  [dim]От 1 до 50 bps.[/dim]")
+    if step != v["grid_step"]:
+        changes.append(("execution", "grid_step_bps", fmt(step)))
+    while True:
+        hours = ask_number("Центр: медиана за, часов", v["grid_hours"])
+        if 2 <= hours <= 168:
+            break
+        console.print("  [dim]От 2 до 168 часов.[/dim]")
+    if hours != v["grid_hours"]:
+        changes.append(("execution", "grid_centre_hours", fmt(hours)))
+    if changes:
+        apply_changes(changes)
+        pause()
+
+
 def strategy_menu() -> None:
     from entropy_arb.strategy import STRATEGIES
     while True:
@@ -3192,8 +3359,10 @@ def strategy_menu() -> None:
         texts = strategy_texts(title, v)
         ab = autoband_values()
         header("Настройки · стратегия и автокоридор")
+        band_now = ("автокоридор не действует" if mode == "grid"
+                    else autoband_short(ab))
         console.print(f"  Сейчас: [bold]{strategy_label(mode)} · "
-                      f"{autoband_short(ab)}[/bold] [dim](общие для всех "
+                      f"{band_now}[/bold] [dim](общие для всех "
                       f"пар)[/dim]")
         console.print(f"  Защита: {protection_summary(v)}\n")
         console.print("  [dim]Автокоридор решает, КОГДА входить в сделку; "
@@ -3207,13 +3376,13 @@ def strategy_menu() -> None:
             console.print(f"     [dim]{texts[m][0]}[/dim]")
         console.print("\n  [bold]Автокоридор — когда входить[/bold] [dim]— "
                       "главное для заработка[/dim]")
-        console.print(f"  4  {autoband_label(ab)[0].upper()}"
+        console.print(f"  5  {autoband_label(ab)[0].upper()}"
                       f"{autoband_label(ab)[1:]} — сменить режим "
                       f"(Объём / Баланс / Доход)", markup=False)
         tight = mode in ("entropy_first", "volume")
         if tight:
             console.print("\n  [bold]Настройка стратегии[/bold]")
-            console.print(f"  5  Насколько хуже рынка можно купить или продать "
+            console.print(f"  6  Насколько хуже рынка можно купить или продать "
                           f"на Entropy: {ef_limit_text(v)}")
         if mode == "volume":
             cost, n = volume_cost_now(v)
@@ -3222,18 +3391,24 @@ def strategy_menu() -> None:
                         f"ещё не измерена ({n} сделок из 10)")
             console.print(f"     [dim]Реальная цена объёма по сделкам: "
                           f"{measured}. Коридор и допустимую цену задаёт "
-                          f"Автокоридор (пункт 4).[/dim]")
+                          f"Автокоридор (пункт 5).[/dim]")
+        if mode == "grid":
+            console.print("\n  [bold]Настройка стратегии[/bold]")
+            console.print(f"  6  Сетка: шаг {fmt(v['grid_step'], True)} bps, "
+                          f"центр — медиана за {fmt(v['grid_hours'], True)} ч")
+            console.print("     [dim]Автокоридор (пункт 5) в сетке не "
+                          "действует.[/dim]")
         warn = miss_warning(mode, v["ticker"])
         if warn:
             console.print(f"\n  [yellow]{warn}.[/yellow]")
         console.print("\n  [bold]Защита[/bold] [dim]— к любой стратегии, по "
                       "умолчанию выключена[/dim]")
-        console.print(f"  6  {PROTECTION_TEXTS['slipgate'][0]}: "
+        console.print(f"  7  {PROTECTION_TEXTS['slipgate'][0]}: "
                       + ("[bold]вкл[/bold]" if v["slipgate"] else "выкл"))
-        console.print(f"  7  {PROTECTION_TEXTS['excess'][0]}: "
+        console.print(f"  8  {PROTECTION_TEXTS['excess'][0]}: "
                       + (f"[bold]вкл, {fmt(v['max_excess'], True)} bps[/bold]"
                          if v["max_excess"] > 0 else "выкл"))
-        console.print("\n  8  Как выбрать — коротко о стратегиях и "
+        console.print("\n  9  Как выбрать — коротко о стратегиях и "
                       "проскальзывании", markup=False)
         console.print("  0  Назад\n", markup=False)
         choice = ask()
@@ -3243,7 +3418,7 @@ def strategy_menu() -> None:
         if choice in by_num:
             strategy_detail(by_num[choice], v)
             continue
-        if choice == "5" and tight:
+        if choice == "6" and tight:
             header("Настройки · худшая цена на Entropy")
             console.print("  [dim]Для стратегий 2 и 3: насколько хуже цены "
                           "сигнала бот согласен купить или\n  продать на "
@@ -3279,13 +3454,15 @@ def strategy_menu() -> None:
             if changes:
                 apply_changes(changes)
                 pause()
-        elif choice == "4":
+        elif choice == "6" and mode == "grid":
+            grid_settings(v)
+        elif choice == "5":
             autoband_menu()
-        elif choice == "6":
-            protection_detail("slipgate", v)
         elif choice == "7":
-            protection_detail("excess", v)
+            protection_detail("slipgate", v)
         elif choice == "8":
+            protection_detail("excess", v)
+        elif choice == "9":
             strategy_help()
 
 
@@ -3628,7 +3805,7 @@ def telegram_menu() -> None:
             telegram_connect()
         elif choice == "2" and token and chat:
             r = tg_call(token, "sendMessage", {
-                "chat_id": chat, "text": "✅ Тест: MoneyClub 3 на связи."})
+                "chat_id": chat, "text": "✅ Тест: Mriya на связи."})
             console.print("  [green]✔ Отправлено — проверьте Telegram.[/green]"
                           if r.get("ok") else
                           f"  [red]✘ Не отправлено: {r.get('description')}"
@@ -3714,7 +3891,7 @@ def telegram_connect() -> None:
             pass
         r = tg_call(raw, "sendMessage", {
             "chat_id": chat_id,
-            "text": "✅ MoneyClub 3 подключён.\nСюда будут приходить сообщения "
+            "text": "✅ Mriya подключён.\nСюда будут приходить сообщения "
                     "о старте и итоге сессии.\nУправление ботом — /menu "
                     "(кнопки), список команд — /help"})
         console.print("\n  [green]✔ Подключено.[/green] Проверьте Telegram — "
@@ -4066,7 +4243,7 @@ def main() -> None:
             clear()
             console.print("  Бот продолжает работать на сервере, если был "
                           "запущен.\n  Открыть меню снова — команда [bold]"
-                          "moneyclub[/bold]\n")
+                          "Mriya[/bold]\n")
             return
         fn = actions.get(choice)
         if fn is None:

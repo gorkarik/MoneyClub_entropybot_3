@@ -108,6 +108,15 @@ class Centre:
         return abs(self.recent - self.live) > self.conf.jump_bps
 
 
+def grid_conf(hours: float) -> AutonomyConf:
+    """Centre settings of strategy 4 «Сетка»: the median of the last
+    `hours`, ready after an hour of data (or at once when the pair's minute
+    file has it), no leash to the pair midline, no jump guard — the grid
+    must follow the premium wherever it goes."""
+    return AutonomyConf(enabled=True, window_min=hours * 60.0, min_min=60.0,
+                        max_drift_bps=1e6, jump_bps=0.0, recentre_min=0.0)
+
+
 def seed_rows(csv_path: str, window_min: float, now: float,
               min_samples: int = 10) -> List[Tuple[float, float]]:
     """(ts, premium) of the pair's recorded minutes inside the window, so a

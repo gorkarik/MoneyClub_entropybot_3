@@ -304,8 +304,8 @@ def test_menu_has_test_recording_and_limit_buttons(ctl):
 
 
 def test_bot_session_lookup_is_exact(monkeypatch):
-    """tmux matches a session name by prefix: «moneyclub3» found the
-    listener «moneyclub3-tg», and Stop killed the listener itself."""
+    """tmux matches a session name by prefix: «mriya» found the
+    listener «mriya-tg», and Stop killed the listener itself."""
     import club
     seen = []
     monkeypatch.setattr(club, "tmux", lambda *a, **k: seen.append(a) or
@@ -394,3 +394,19 @@ def test_api_edits_the_pressed_message_and_keeps_the_header():
     api.send("next")
     assert calls[-1][0] == "editMessageText"
     assert calls[-1][1]["message_id"] == 5
+
+
+def test_export_buttons_send_the_archive(monkeypatch):
+    import tgcontrol
+    c = tgcontrol.Control(FakeApi())
+    c.handle("callback", "export")
+    rows = c.api.sent[-1][1]
+    assert ("Всё · неделя", "exp:1:3") in rows[0]
+    sent = []
+    monkeypatch.setattr(tgcontrol.club, "export_build",
+                        lambda kind, days, label: ["/x/a.tar.gz"])
+    monkeypatch.setattr(tgcontrol.club, "export_to_telegram",
+                        lambda parts, label: sent.append(parts) or "")
+    c.handle("callback", "exp:1:3")
+    assert sent == [["/x/a.tar.gz"]]
+    assert "Архив отправлен" in c.api.sent[-1][0]

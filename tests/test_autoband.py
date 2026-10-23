@@ -174,7 +174,7 @@ def test_income_mode_demands_a_profitable_round_trip():
 
 
 def test_strategy_menu_holds_the_autocorridor(tmp_path, monkeypatch):
-    """Autocorridor sits next to the strategies: item 8 opens its modes."""
+    """Autocorridor sits next to the strategies: item 5 opens its modes."""
     import os
     from rich.console import Console
     import club
@@ -190,7 +190,7 @@ def test_strategy_menu_holds_the_autocorridor(tmp_path, monkeypatch):
     monkeypatch.setattr(club, "console", rec)
     monkeypatch.setattr(club, "header", lambda *a, **k: None)
     monkeypatch.setattr(club, "pause", lambda: None)
-    answers = iter(["4", "3", "0", "0"])
+    answers = iter(["5", "3", "0", "0"])
     monkeypatch.setattr(club, "ask", lambda *a, **k: next(answers))
     club.strategy_menu()
     out = rec.export_text()

@@ -132,7 +132,7 @@ def leg1(eng) -> str:
 def start_text(eng) -> str:
     mode = "тестовая запись (без сделок)" if eng.record_only \
         else "режим торговли"
-    lines = ["▶️ MoneyClub 3 запущен", f"Пара: {pair_title(eng)}",
+    lines = ["▶️ Mriya запущен", f"Пара: {pair_title(eng)}",
              f"Режим: {mode}"]
     if not eng.record_only:
         cfg = eng.cfg
@@ -210,7 +210,7 @@ STOP_REASONS = {"manual": "вручную (Стоп)", "loss_limit": "стоп �
 def finish_text(eng, s: dict) -> str:
     """s: what _finish_session computed (live) — see Engine._finish_session."""
     pnl, pct = s.get("pnl"), s.get("pnl_pct")
-    head = "⏹ MoneyClub 3 остановлен"
+    head = "⏹ Mriya остановлен"
     lines = [head, f"Пара: {pair_title(eng)}"]
     res = _usd(pnl, sign=True)
     if pct is not None:
@@ -379,7 +379,10 @@ def money_line(eng, pnl=None, c=None, fees=None) -> Optional[str]:
 
 
 def band_line(eng) -> Optional[str]:
-    """Auto corridor: where the bot sells and buys Entropy right now."""
+    """Auto corridor: where the bot sells and buys Entropy right now.
+    Strategy 4 «Сетка»: its ladder instead."""
+    if getattr(eng, "grid", None) is not None:
+        return grid_line(eng)
     ab = getattr(eng, "band", None)
     if ab is None:
         return None
@@ -395,6 +398,22 @@ def band_line(eng) -> Optional[str]:
     if ab.raised > 0:
         txt += " · поднят до лимита цены объёма"
     return txt
+
+
+def grid_line(eng) -> str:
+    """Strategy 4: 'Сетка: центр +12.3 bps (24 ч), шаг 4, позиция +2.0
+    порции · продажа Entropy от +8.3, покупка от −0.7 bps'."""
+    step = getattr(eng.cfg, "grid_step_bps", 4.0)
+    lv = eng.grid_levels()
+    if lv is None:
+        return (f"Сетка: набирает данные для центра (нужен час), шаг "
+                f"{step:g} bps")
+    g = eng.grid
+    src = (f"{g.conf.window_min / 60:g} ч" if g.live is not None
+           else "пока по последнему часу")
+    return (f"Сетка: центр {eng.grid_centre():+.1f} bps ({src}), шаг "
+            f"{step:g} · позиция {eng.grid_level():+.1f} порции · продажа "
+            f"Entropy от {lv[0]:+.1f}, покупка от {lv[1]:+.1f} bps")
 
 
 def strategy_name_line(eng) -> str:

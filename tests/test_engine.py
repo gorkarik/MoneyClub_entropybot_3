@@ -64,18 +64,40 @@ def approx(a, b, tol=1e-9):
 
 
 def test_eff_threshold_directions():
+    from entropy_arb.book import reverse_bps
     eng = make_engine(midline=5.0, upper=4.0, lower=3.0)
     e, h = eng.entropy, eng.hedge
     # sell entropy: hurdle = midline + upper = 9
     approx(eng._eff_threshold(buy=h, sell=e), 9.0)
-    # buy entropy: hurdle = lower - midline = -2 (unwind side of a positive
-    # midline is deliberately cheap — that's what completes the round trip)
-    approx(eng._eff_threshold(buy=e, sell=h), -2.0)
-    # round trip nets upper + lower regardless of midline sign
-    for m in (-7.0, 0.0, 12.5):
+    # buy entropy: Entropy must be at most midline − lower = +2 over the
+    # hedge, i.e. the hedge at least reverse(+2) ≈ −2 over Entropy (unwind
+    # side of a positive midline is deliberately cheap)
+    approx(eng._eff_threshold(buy=e, sell=h), reverse_bps(2.0))
+    # round trip nets upper + lower in premium terms, whatever the midline
+    for m in (-7.0, 0.0, 12.5, -300.0, -370.0):
         eng.cfg.midline_bps = m
-        total = eng._eff_threshold(buy=h, sell=e) + eng._eff_threshold(buy=e, sell=h)
-        approx(total, 7.0)
+        sell_at = eng._eff_threshold(buy=h, sell=e)
+        buy_at = reverse_bps(eng._eff_threshold(buy=e, sell=h))
+        approx(sell_at - buy_at, 7.0, 1e-9)
+
+
+def test_buy_threshold_exact_at_a_large_premium():
+    """The bug of 2026-10-23: at a premium of −370 bps the buy threshold
+    was the negated level (+370 − …), ~14 bps easier than asked."""
+    eng = make_engine(midline=-369.6, upper=5.5, lower=18.5)
+    e, h = eng.entropy, eng.hedge
+    h.set_book(99.99, 100.01)
+    # Entropy ask 380 bps under the hedge bid: not enough (−380 > −388.1);
+    # the old "negated" threshold bought already from about −373.6
+    hb = 99.99
+    ea = round(hb * (1 - 380.0 / 1e4), 4)
+    e.set_book(ea - 0.01, ea)
+    assert run_scan(eng) is None
+    # premium −390 (beyond −369.6 − 18.5 = −388.1): buys
+    ea = round(hb * (1 - 390.0 / 1e4), 4)
+    e.set_book(ea - 0.01, ea)
+    best = run_scan(eng)
+    assert best is not None and best[0].key == "entropy"
 
 
 def test_inventory_ladder():

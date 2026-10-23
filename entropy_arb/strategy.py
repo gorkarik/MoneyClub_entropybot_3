@@ -1,6 +1,6 @@
 """Strategies: names shown to the user, and the volume-cost guard.
 
-Three ways to enter a trade (config: execution.mode). Exactly one is active:
+Four ways to enter a trade (config: execution.mode). Exactly one is active:
 
   1  simultaneous   "Обе ноги сразу"   both IOC legs go out at once
   2  entropy_first  "Сначала Entropy"  Entropy IOC with a tight price limit
@@ -12,6 +12,18 @@ Three ways to enter a trade (config: execution.mode). Exactly one is active:
                                        volume is above VOLUME_MAX_COST_USD,
                                        opening trades need that much more
                                        premium (closes are never held back)
+
+  4  grid           "Сетка"           both legs at once (as 1); WHEN to
+                                       trade is a ladder around the median
+                                       premium of the last grid_centre_hours:
+                                       with n clips long Entropy the bot buys
+                                       the next clip at centre − (n+1)·step
+                                       and sells one at centre − (n−1)·step.
+                                       Every round trip earns one step, the
+                                       ladder never waits for the premium to
+                                       come back, and the position cap stops
+                                       it. The auto corridor, exit relief and
+                                       calm opening are not used.
 
 The narrowing and the price ceiling are fixed here, not settings: limits
 are the same for every strategy and set by hand, the volume preset is not.
@@ -36,6 +48,7 @@ STRATEGIES = {
     "simultaneous": (1, "Обе ноги сразу"),
     "entropy_first": (2, "Сначала Entropy"),
     "volume": (3, "Объём"),
+    "grid": (4, "Сетка"),
 }
 MODES = tuple(STRATEGIES)
 

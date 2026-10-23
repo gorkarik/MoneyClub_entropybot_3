@@ -3,7 +3,8 @@
 The signal is a fixed band around a configured midline (config.yaml):
 
     SELL entropy / BUY hedge  when executable premium >= midline + upper (+fees)
-    BUY entropy / SELL hedge  when executable premium <= midline - lower (+fees)
+    BUY entropy / SELL hedge  when executable premium <= midline - lower (fees
+                              included; turned around exactly, see reverse_bps)
 
 Around the signal: per-direction persistence arming,
 per-venue inventory ladder + position caps, per-venue order budgets and
@@ -18,16 +19,17 @@ import asyncio
 import logging
 import time
 from collections import deque
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 
-from .book import ArbPlan, floor_step, plan_arb, walk_depth
+from .book import ArbPlan, floor_step, plan_arb, reverse_bps, walk_depth
 from .config import Config
 from .recorder import MinuteRecorder
 from .slipgate import SlipModel, leg_slip_bps, slip_file_name
 from .strategy import VolumeCost, strategy_title, tight_entropy_first
 from .ticks import TickRecorder
+from .flows import FlowRecorder
 from . import autocalib, autotune
 from . import backtest as bt
 from . import autonomy
@@ -75,6 +77,8 @@ DIAG_HEADER = ["ts", "session_id", "symbol", "hedge_venue", "mode",
                "e_mark3_bps", "e_ms", "h_ms", "imbalance", "e_limit_bps",
                "h_repriced"]
 IMB_LEVELS = 5                    # book levels counted for the imbalance ratio
+# strategy 4 «Сетка»: threshold while the grid has no centre (never trades)
+GRID_NO_CENTRE_BPS = 1e6
 VOL_WINDOW_SEC = 60.0             # Entropy price range window of the fast-market band
 VOL_SAMPLE_SEC = 0.5
 MAKER_STEP_SEC = 0.25             # maker quote loop
@@ -231,7 +235,14 @@ class Engine:
         self.band: Optional[autonomy.AutoBand] = (
             autonomy.AutoBand(bconf)
             if bconf is not None and bconf.enabled and not record_only
+            and getattr(cfg, "exec_mode", "") != "grid"
             else None)
+        # strategy 4 «Сетка» (grid): its own slow centre — the median of
+        # the mid premium over grid_centre_hours, no leash, no jump guard
+        self.grid: Optional[autonomy.Centre] = None
+        if getattr(cfg, "exec_mode", "") == "grid" and not record_only:
+            self.grid = autonomy.Centre(autonomy.grid_conf(
+                getattr(cfg, "grid_centre_hours", 24.0)), cfg.midline_bps)
         self.last_open_ts = 0.0
         self.pos_open_ts: Optional[float] = None    # when the position opened
         self.jump_skips = 0
@@ -493,6 +504,13 @@ class Engine:
                                            self.hedge.book, cfg.staleness_sec)
             tasks.append(asyncio.create_task(self.recorder.run(self.stop),
                                              name="recorder"))
+        flows_min = getattr(cfg, "flows_min_usd", 0.0)
+        ent = self.entropy
+        if flows_min > 0 and getattr(ent, "kind", "") == "hl" and ent.coin:
+            tasks.append(asyncio.create_task(
+                FlowRecorder(cfg.flows_dir, cfg.hedge_venue, cfg.symbol,
+                             ent.ws_url, ent.coin, flows_min).run(self.stop),
+                name="flows"))
         if cfg.ticks_sec > 0:
             self.ticks = TickRecorder(
                 cfg.ticks_dir, cfg.hedge_venue, cfg.symbol, self.entropy.book,
@@ -522,6 +540,18 @@ class Engine:
                          if self.centre.live is not None else "not yet")
             except Exception:
                 log.exception("[autonomy] centre seed failed")
+        if self.grid is not None:
+            try:
+                rows = autonomy.seed_rows(cfg.recorder_csv,
+                                          self.grid.conf.window_min,
+                                          time.time())
+                self.grid.seed(rows)
+                self.grid.update(time.time())
+                log.info("[grid] centre seeded from %d minutes: %s",
+                         len(rows), f"{self.grid.live:+.1f} bps"
+                         if self.grid.live is not None else "not yet")
+            except Exception:
+                log.exception("[grid] centre seed failed")
         tasks.append(asyncio.create_task(self._premium_sampler(),
                                          name="premium"))
         if live:
@@ -623,10 +653,23 @@ class Engine:
         return max(ramp(buy, buy.position >= 0), ramp(sell, sell.position <= 0))
 
     def _eff_threshold(self, buy, sell) -> float:
-        """Net hurdle (bps, on top of fees) for the direction buy->sell.
+        """Net hurdle (bps, fees included by plan_arb) for buy->sell, in the
+        units plan_arb compares: the premium of the sell venue over the buy
+        venue.
 
-        selling entropy: executable premium must clear midline + upper;
-        buying entropy: the reverse premium must clear lower - midline."""
+        selling entropy: Entropy bid over hedge ask, net of fees, must reach
+        midline + upper; buying entropy: Entropy ask over hedge bid, fees
+        included, must fall to midline − lower. plan_arb sees the hedge over
+        Entropy for that direction, so the level is turned around exactly
+        with reverse_bps (not by a sign: at a premium of −300 bps the two
+        differ by ~9 bps)."""
+        if self.grid_on():
+            g = self.grid_base_bps(buy, sell)
+            if g is None:
+                return GRID_NO_CENTRE_BPS
+            # the grid is its own inventory ladder and has no exit relief
+            return (g + self.vol_add_bps(buy, sell)
+                    + self.slip_charge_bps(buy, sell))
         ab = self.band
         if ab is not None and ab.ready():
             # auto corridor: the threshold already sits where the market is
@@ -638,19 +681,72 @@ class Engine:
                     + self.slip_charge_bps(buy, sell)
                     + self.volume_charge_bps(buy, sell))
         mid = self.mid_bps()
-        if sell.key == "entropy":
-            band = self.cfg.upper_bps
-            base = mid + band
-        else:
-            band = self.cfg.lower_bps
-            base = band - mid
+        sell_e = sell.key == "entropy"
+        band = self.cfg.upper_bps if sell_e else self.cfg.lower_bps
+        # distance from the centre the premium must reach, bps
+        dist = band
         if self.auto.enabled and not self._opens(buy, sell):
-            base -= self.exit_relief_bps(band)
-        return (base - self.volume_narrow_bps()
-                + self.vol_add_bps(buy, sell)
-                + self._inv_add_bps(buy, sell)
-                + self.slip_charge_bps(buy, sell)
-                + self.volume_charge_bps(buy, sell))
+            dist -= self.exit_relief_bps(band)
+        dist += (self.vol_add_bps(buy, sell) + self._inv_add_bps(buy, sell)
+                 + self.slip_charge_bps(buy, sell)
+                 + self.volume_charge_bps(buy, sell)
+                 - self.volume_narrow_bps())
+        if sell_e:
+            return mid + dist
+        return reverse_bps(mid - dist)
+
+    # ------------------------------------------------------- strategy 4: grid
+
+    def grid_on(self) -> bool:
+        return self.grid is not None
+
+    def grid_centre(self) -> Optional[float]:
+        """Centre of the grid: the slow median; while it has too little
+        data, the floating centre of autonomy; None = nothing yet."""
+        g = self.grid
+        if g is not None and g.live is not None:
+            return g.live
+        c = self.centre
+        if c is not None and c.live is not None:
+            return c.live
+        return None
+
+    def grid_level(self) -> float:
+        """Entropy position in clips (max_order_notional): + long, − short.
+        Fractional when a fill was smaller than a clip."""
+        e = self.entropy
+        ref = e.book.mid() if e is not None else None
+        clip = float(self.cfg.max_order_notional)
+        if not ref or clip <= 0:
+            return 0.0
+        return e.position * ref / clip
+
+    def grid_levels(self) -> Optional[Tuple[float, float]]:
+        """(sell_at, buy_at): premium levels (bps, before fees) where the
+        grid sells / buys the next clip of Entropy. None: no centre yet."""
+        c = self.grid_centre()
+        if c is None:
+            return None
+        s = float(getattr(self.cfg, "grid_step_bps", 4.0))
+        n = self.grid_level()
+        return c - (n - 1.0) * s, c - (n + 1.0) * s
+
+    def grid_base_bps(self, buy, sell) -> Optional[float]:
+        """Grid threshold in plan_arb's terms: the premium of the sell venue
+        over the buy venue, net of both taker fees. The grid levels are on
+        the price premium before fees:
+          selling Entropy: Entropy bid / hedge ask − 1 >= sell_at;
+          buying Entropy:  Entropy ask / hedge bid − 1 <= buy_at, which
+          plan_arb sees as hedge bid / Entropy ask − 1 >= reverse_bps(buy_at)
+        (exact; −buy_at would be off by ~9 bps at a premium of −300)."""
+        lv = self.grid_levels()
+        if lv is None:
+            return None
+        sell_at, buy_at = lv
+        fs, fb = sell.fee_bps / 1e4, buy.fee_bps / 1e4
+        net = (1.0 - fs) / (1.0 + fb)          # fees, as plan_arb applies them
+        gross = sell_at if sell.key == "entropy" else reverse_bps(buy_at)
+        return ((1.0 + gross / 1e4) * net - 1.0) * 1e4
 
     # ------------------------------------------------ fast market, imbalance
 
@@ -712,7 +808,9 @@ class Engine:
         eff = self._eff_threshold(buy, sell)
         hurdle = eff + buy.fee_bps + sell.fee_bps
         mid = self.mid_bps()
-        band = eff - (mid if sell.key == "entropy" else -mid)
+        # distance of the hurdle from the centre (premium terms)
+        band = (eff - mid if sell.key == "entropy"
+                else mid - reverse_bps(eff))
         spare = max(0.0, plan.marginal_premium_bps - hurdle)
         give = max(0.0, band) * (1.0 - cfg.entropy_first_keep)
         return min(max(spare + give, 0.5), 3.0 * fixed)
@@ -720,6 +818,10 @@ class Engine:
     def mid_bps(self) -> float:
         """Centre of the band in use: the floating centre when autonomy is
         on and has enough data, else the pair's midline."""
+        if self.grid_on():
+            g = self.grid_centre()
+            if g is not None:
+                return g
         c = self.centre
         if c is not None and c.live is not None:
             return c.live
@@ -760,6 +862,12 @@ class Engine:
             if held:
                 self._skiplog("%s held: %s", dkey, ", ".join(held))
                 return True
+        if self.grid_on():
+            # the grid wants the jumps: no cooldown, no jump guard
+            if self.grid_centre() is None:
+                self._skiplog("%s held: grid centre has no data yet", dkey)
+                return True
+            return False
         if not self.auto.enabled or not self._opens(buy, sell):
             return False
         gap = self.auto.open_cooldown_sec
@@ -856,6 +964,28 @@ class Engine:
                         "%+.1f bps, buy from %+.1f bps (round trip %+.1f bps) "
                         "/ автокоридор включился", ab.sell, ab.buy,
                         ab.round_trip_bps())
+            self._update_evt.set()
+
+    def _feed_grid(self, now: float) -> None:
+        g = self.grid
+        if g is None:
+            return
+        st = self.cfg.staleness_sec
+        p = None
+        if (self.entropy is not None and self.hedge is not None
+                and self.entropy.book.is_fresh(st)
+                and self.hedge.book.is_fresh(st)):
+            p = self.premium_bps()
+        was = g.live is not None
+        if p is None:
+            g.update(now)
+        else:
+            g.add(now, p)
+        if g.live is not None and not was:
+            log.warning("[grid] grid centre on: %+.1f bps (median of %.0f h), "
+                        "step %g bps / сетка: центр включился",
+                        g.live, g.conf.window_min / 60.0,
+                        getattr(self.cfg, "grid_step_bps", 4.0))
             self._update_evt.set()
 
     def _maybe_recentre(self, now: float) -> None:
@@ -1153,7 +1283,7 @@ class Engine:
             if self._imbalance_blocks(buy, sell, dkey):
                 continue
             if (self.auto.enabled or self.band is not None) \
-                    and not self._opens(buy, sell):
+                    and not self.grid_on() and not self._opens(buy, sell):
                 # a relaxed closing hurdle must never open the other side:
                 # a closing trade is at most the position it closes
                 pos_usd = abs(self.entropy.position) * plan.buy_limit
@@ -2190,8 +2320,17 @@ class Engine:
         are fine. Subtracting the centre leaves what the trade earned over
         its own entry point: sell: (premium − centre), buy: (centre −
         premium), times the notional."""
-        c = self.mid_bps() / 1e4 * notional
-        return fill_edge - c if direction == "sell_entropy" else fill_edge + c
+        c = self.mid_bps()
+        if not notional:
+            return fill_edge
+        x = fill_edge / notional * 1e4       # bps of the Entropy notional
+        # back to the premium Entropy/hedge − 1 the trade was made at
+        # (exact; at −300 bps "−x" or "x" alone would be ~9 bps off)
+        if direction == "sell_entropy":
+            prem = reverse_bps(-x)            # x = 1 − hedge/Entropy
+            return (prem - c) / 1e4 * notional
+        prem = reverse_bps(x)                 # x = hedge/Entropy − 1
+        return (c - prem) / 1e4 * notional
 
     def _watch_profit(self, fill_edge: float, notional: float = 0.0) -> None:
         """fill_edge here is already measured from the centre
@@ -3287,6 +3426,10 @@ class Engine:
                     self._feed_band(last_feed)
                 except Exception:
                     log.exception("[autoband] update failed")
+                try:
+                    self._feed_grid(last_feed)
+                except Exception:
+                    log.exception("[grid] centre update failed")
             try:
                 p = self.premium_bps()
             except Exception:

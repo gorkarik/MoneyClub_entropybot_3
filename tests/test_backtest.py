@@ -50,6 +50,23 @@ def test_round_trips_earn_the_band():
     assert 6 < rt_bps < 14
 
 
+def test_round_trip_earns_the_band_at_a_large_premium():
+    """Centre −370 (OAI on 2026-10-23): the round trip must still earn about
+    upper + lower — the buy side used to be ~14 bps too easy there."""
+    p = bt.Params(midline_bps=-370, upper_bps=5, lower_bps=5, order_usd=20,
+                  min_order_usd=10, cap_usd=20, auto=OFF)
+    r = bt.run(wave(lo=-380.0, hi=-360.0), p)
+    assert r.trades >= 4
+    closed = [float(x["fill_edge_usd"]) for x in r.rows[:2 * r.closes]]
+    # fill edges hold the premium level; per round trip they add up to the
+    # band (measured on the Entropy notional, ~$20)
+    rt_bps = sum(closed) / (20.0 * r.closes) * 1e4
+    assert 6 < rt_bps < 14
+    # a swing that never reaches centre − lower does not buy at all
+    r = bt.run(wave(lo=-374.0, hi=-360.0), p)
+    assert r.opens == r.trades == 1          # the sell only, no buy back
+
+
 def test_slip_and_fees_are_charged():
     base = bt.Params(midline_bps=0, upper_bps=5, lower_bps=5, cap_usd=20,
                      auto=OFF)

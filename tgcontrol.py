@@ -1,12 +1,12 @@
 """Управление ботом из Telegram: постоянный слушатель чата.
 
-Запускается сам (cron через `moneyclub --resume`, после перезагрузки сервера
-и при установке) в своей фоновой tmux-сессии: `moneyclub --telegram`.
+Запускается сам (cron через `Mriya --resume`, после перезагрузки сервера
+и при установке) в своей фоновой tmux-сессии: `Mriya --telegram`.
 Работает и когда торговый бот остановлен — поэтому из чата можно его
 запустить.
 
 Всё управление — кнопками одного «живого» сообщения: нажатие меняет это же
-сообщение, чат не засоряется. Сверху каждого сообщения — шапка MONEY CLUB.
+сообщение, чат не засоряется. Сверху каждого сообщения — шапка MRIYA.
 Из команд нужна только /menu (остальные старые команды тоже работают).
 
 Отвечает только чату из .env (TELEGRAM_CHAT_ID), всё остальное
@@ -45,7 +45,7 @@ REPORT_PERIODS = {"24": (24, "24 часа"), "168": (168, "неделю"),
                   "0": (0, "всё время")}
 MAX_TEXT = 3800                 # предел сообщения Telegram — 4096
 
-HEADER = "💚 <b>MONEY CLUB</b> · версия 3\n━━━━━━━━━━━━━━━━━━\n"
+HEADER = "💚 <b>MRIYA</b>\n━━━━━━━━━━━━━━━━━━\n"
 MENU_BTN = ("« Меню", "menu")
 
 HELP = (
@@ -68,7 +68,7 @@ HELP = (
     "📊 Статус · 💰 Результат · 📄 Отчёт — что происходит и сколько "
     "заработано.\n\n"
     "Меню всегда можно открыть командой /menu.\n"
-    "Ключи бирж меняются только на сервере (команда moneyclub).")
+    "Ключи бирж меняются только на сервере (команда Mriya).")
 
 Buttons = Optional[List[List[Tuple[str, str]]]]
 
@@ -123,7 +123,7 @@ class Api:
     def set_commands(self) -> None:
         """В списке команд Telegram — только /menu."""
         self.call("setMyCommands", {"commands": [
-            {"command": "menu", "description": "Меню MoneyClub"}]})
+            {"command": "menu", "description": "Меню Mriya"}]})
 
     def updates(self, timeout: int = 25) -> list:
         payload = {"timeout": timeout,
@@ -320,6 +320,7 @@ class Control:
             [("📏 Лимиты", "limits"), ("🛑 Стоп-лосс", "stoploss")],
             [("📊 Статус", "status"), ("📄 Отчёт", "report"),
              ("❓ Помощь", "help")],
+            [("📦 Скачать данные", "export")],
         ]
         self.api.send("\n".join(lines), rows, html_text=True)
 
@@ -407,7 +408,7 @@ class Control:
         if not ok:
             golive_clear()
             self.menu("✘ Бот не запустился. Подробности — на сервере "
-                      "(команда moneyclub → Старт) или в logs/stderr.log.")
+                      "(команда Mriya → Старт) или в logs/stderr.log.")
             return
         self.menu(done or ("✅ Запущена тестовая запись (без денег)." if record
                            else "✅ Запущена торговля на реальные деньги."))
@@ -419,7 +420,7 @@ class Control:
         _, keys_ok = club.keys_state(pair[0])
         if not keys_ok:
             return ("✘ Ключи для этой биржи не заполнены. Ключи вводятся "
-                    "только на сервере: команда moneyclub → Настройки → "
+                    "только на сервере: команда Mriya → Настройки → "
                     "Ключи.", [[MENU_BTN]])
         if not club.live_deps_ok():
             return ("✘ Не установлены библиотеки боевого режима. Запустите "
@@ -513,7 +514,7 @@ class Control:
         ok = club.stop_bots([b for b in club.find_bots() if b.ours])
         if not ok:
             self.menu("✘ Не удалось остановить бота — проверьте на сервере "
-                      "(команда moneyclub → Стоп).")
+                      "(команда Mriya → Стоп).")
             return None
         if show:
             self.menu("⏹ Бот остановлен.")
@@ -577,7 +578,9 @@ class Control:
         rows.append([(("● " if smode == "simultaneous" else "")
                       + "Стратегия 1", "st:simultaneous"),
                      (("● " if smode == "entropy_first" else "")
-                      + "Стратегия 2", "st:entropy_first")])
+                      + "Стратегия 2", "st:entropy_first"),
+                     (("● " if smode == "grid" else "")
+                      + "Стратегия 4", "st:grid")])
         rows.append([MENU_BTN])
         notes = "\n".join(f"• {n}: {t}" for n, _s, _c, t
                           in club.AUTOBAND_PROFILES)
@@ -586,9 +589,12 @@ class Control:
             "Автокоридор — КОГДА входить:\n" + notes +
             "\n\nСтратегия — КАК исполнять:\n"
             "• 1: обе ноги сразу\n"
-            "• 2: сначала Entropy с пределом цены, потом хедж\n\n"
+            "• 2: сначала Entropy с пределом цены, потом хедж\n"
+            "• 4: сетка — лесенка вокруг средней премии, сама решает, когда "
+            "входить (автокоридор в ней не действует)\n\n"
             f"Сейчас: {club.strategy_label(smode)} · "
-            f"{club.autoband_short(ab)}", rows)
+            + ("автокоридор не действует" if smode == "grid"
+               else club.autoband_short(ab)), rows)
 
     def set_mode(self, name: str) -> None:
         prof = next((p for p in club.AUTOBAND_PROFILES if p[0] == name), None)
@@ -601,7 +607,7 @@ class Control:
                     f"Автокоридор: режим «{name}»")
 
     def set_strategy(self, mode: str) -> None:
-        if mode not in ("simultaneous", "entropy_first"):
+        if mode not in ("simultaneous", "entropy_first", "grid"):
             return
         self.change([("execution", "mode", mode)],
                     club.strategy_label(mode))
@@ -826,6 +832,48 @@ class Control:
                       + (out or "Сделок за период нет."),
                       [[("Другой период", "report"), MENU_BTN]])
 
+    def export_screen(self) -> None:
+        rows = []
+        for kkey, (kind, _t) in club.EXPORT_KINDS.items():
+            title = "Всё" if kind == "all" else "Крупные сделки"
+            rows.append([(f"{title} · {label}", f"exp:{kkey}:{pkey}")
+                         for pkey, (_d, label) in club.EXPORT_PERIODS.items()
+                         if pkey in ("1", "3", "4")])
+        rows.append([MENU_BTN])
+        self.api.send(
+            "📦 Скачать данные — архив придёт сюда файлом, его можно "
+            "сохранить на компьютер.\n\n"
+            "• Всё: сделки, сессии, балансы, стаканы, минутки, журнал, "
+            "крупные сделки, настройки — по всем парам. Ключей в архиве "
+            "нет.\n"
+            "• Крупные сделки: только logs/flows.\n\n"
+            "Другие периоды (3 дня, всё время) — в меню на сервере: "
+            "Анализ → 7.", rows)
+
+    def export(self, arg: str) -> None:
+        kkey, _, pkey = arg.partition(":")
+        if kkey not in club.EXPORT_KINDS or pkey not in club.EXPORT_PERIODS:
+            return
+        kind = club.EXPORT_KINDS[kkey][0]
+        days, label = club.EXPORT_PERIODS[pkey]
+        self.api.send(f"📦 Собираю архив за {label}…")
+        try:
+            parts = club.export_build(kind, days, label)
+        except Exception as e:
+            self.api.send(f"Архив не собрался: {e}", [[MENU_BTN]])
+            return
+        if not parts:
+            self.api.send(f"За {label} данных нет.", [[MENU_BTN]])
+            return
+        why = club.export_to_telegram(parts, label)
+        self.api.send(("✔ Архив отправлен" + (f" ({len(parts)} части)"
+                                              if len(parts) > 1 else "")
+                       + ". Откройте файл и сохраните на компьютер.")
+                      if not why else f"В Telegram не ушло: {why}. "
+                      "Скачать можно командой из меню на сервере "
+                      "(Анализ → 7).",
+                      [[("📦 Ещё", "export"), MENU_BTN]], new=True)
+
     # -- разбор
     def handle(self, kind: str, text: str) -> None:
         if kind == "text":
@@ -898,6 +946,10 @@ class Control:
             self.report_screen()
         elif cmd.startswith("rep:"):
             self.report(cmd[4:])
+        elif cmd in ("/export", "export"):
+            self.export_screen()
+        elif cmd.startswith("exp:"):
+            self.export(cmd[4:])
         elif kind == "text":
             self.menu()                  # любое другое сообщение — меню
 
@@ -923,7 +975,7 @@ def code_stamp():
 
 
 def listen() -> int:
-    """`moneyclub --telegram`: слушать чат, пока Telegram настроен."""
+    """`Mriya --telegram`: слушать чат, пока Telegram настроен."""
     import fcntl
     os.chdir(club.APP_DIR)
     os.makedirs(club.LOG_DIR, exist_ok=True)

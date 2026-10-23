@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MoneyClub 3 entry point.
+"""Mriya entry point.
 
     # collect minute data only — no strategy, no credentials needed
     python3 main.py --record-only --symbol SNDK --hedge lighter-rh
