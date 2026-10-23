@@ -118,8 +118,9 @@ def test_engine_exit_relief_on_closing_side_only():
     eng.pos_open_ts -= 3 * 3600                 # opened 3 h ago
     # closing = sell Entropy: 4 → 2 (half of exit_hours)
     assert 1.9 < eng._eff_threshold(buy=h, sell=e) < 2.1
-    # adding = buy Entropy: no relief
-    approx(eng._eff_threshold(buy=e, sell=h), 4.0)
+    # adding = buy Entropy: no relief (premium −4, seen from the hedge)
+    from entropy_arb.book import reverse_bps
+    approx(eng._eff_threshold(buy=e, sell=h), reverse_bps(-4.0))
 
 
 def test_engine_open_cooldown_and_jump():

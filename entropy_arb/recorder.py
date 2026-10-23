@@ -16,7 +16,9 @@ Definitions (all in bps, fees NOT included — the engine adds fees on top):
                  midline_bps + upper_bps (plus fees).
     buy_edge   = (hedge_bid / entropy_ask - 1) * 1e4
                  the executable premium for BUY-entropy/SELL-hedge; fires
-                 when buy_edge clears lower_bps - midline_bps (plus fees).
+                 when the buy premium (entropy_ask / hedge_bid − 1, the
+                 exact reverse of buy_edge — not −buy_edge) is at or below
+                 midline_bps − lower_bps (fees included).
 
 Bid/ask columns are the minute's last fresh sample (close). A row is only
 written for minutes with at least one sample where both books were fresh;

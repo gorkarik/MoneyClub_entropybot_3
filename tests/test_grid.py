@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from entropy_arb import autonomy  # noqa: E402
+from entropy_arb.book import reverse_bps  # noqa: E402
 from entropy_arb.config import ConfigError, load_config  # noqa: E402
 from entropy_arb.engine import GRID_NO_CENTRE_BPS, Engine  # noqa: E402
 from entropy_arb.strategy import STRATEGIES, strategy_title  # noqa: E402
@@ -79,7 +80,10 @@ def test_ladder_flat_long_short():
     # flat: sell one clip at centre + step, buy one at centre − step
     assert eng.grid_levels() == pytest.approx((14.0, 6.0))
     assert eng._eff_threshold(buy=h, sell=e) == pytest.approx(14.0)
-    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(-6.0)
+    # buying: Entropy ask / hedge bid − 1 <= +6, which plan_arb sees as
+    # hedge bid / Entropy ask − 1 >= reverse(+6) (≈ −6, exactly −5.9964)
+    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(
+        reverse_bps(6.0), abs=1e-9)
     # two clips long: next buy two steps lower, sell one step below centre
     e.position = 2 * clip / 100.0
     assert eng.grid_level() == pytest.approx(2.0)
@@ -98,8 +102,14 @@ def test_levels_are_on_price_premium_fees_come_off():
     eng = _engine()
     e, h = eng.entropy, eng.hedge
     e.fee_bps = 0.86
-    assert eng._eff_threshold(buy=h, sell=e) == pytest.approx(14.0 - 0.86)
-    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(-6.0 - 0.86)
+    f = 0.86 / 1e4
+    # exactly as plan_arb applies fees: (1 + level)·(1 − f_sell)/(1 + f_buy)
+    assert eng._eff_threshold(buy=h, sell=e) == pytest.approx(
+        ((1 + 14.0 / 1e4) * (1 - f) - 1) * 1e4, abs=1e-9)
+    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(
+        ((1 + reverse_bps(6.0) / 1e4) / (1 + f) - 1) * 1e4, abs=1e-9)
+    # ≈ the old additive version, the difference is tiny near zero
+    assert eng._eff_threshold(buy=h, sell=e) == pytest.approx(13.14, abs=0.01)
 
 
 def test_no_inventory_surcharge_cooldown_or_jump_guard():
@@ -108,7 +118,8 @@ def test_no_inventory_surcharge_cooldown_or_jump_guard():
     eng.cfg.inventory_scale_bps, eng.cfg.inventory_floor_frac = 10.0, 0.0
     e.position = 50.0                                # half the cap long
     sell_at, buy_at = eng.grid_levels()
-    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(-buy_at)
+    assert eng._eff_threshold(buy=e, sell=h) == pytest.approx(
+        reverse_bps(buy_at), abs=1e-9)
     eng.last_open_ts = 1e12                          # just opened
     assert not eng._open_blocked(e, h, 1e12, "buy_entropy")
 
@@ -125,10 +136,46 @@ def test_scan_trades_only_beyond_the_next_step():
     best = run_scan(eng)
     assert best is not None and best[1].key == "entropy"
     assert best[2].buy_notional <= eng.cfg.max_order_notional + 1e-9
-    # premium +4 (Entropy ask over hedge bid ≈ +5 ≤ 6): buy one clip
+    # Entropy ask over hedge bid = +6.0006 > 6: not yet
     e.set_book(100.03, 100.05)
+    assert run_scan(eng) is None
+    # Entropy ask over hedge bid ≈ +5 ≤ 6: buy one clip
+    e.set_book(100.02, 100.04)
     best = run_scan(eng)
     assert best is not None and best[0].key == "entropy"
+
+
+def test_large_negative_premium_buys_one_step_down_not_earlier():
+    """The live bug of 2026-10-23 (OAI at −370): the buy level was negated
+    instead of turned around, so the grid bought ~13 bps too early and every
+    round trip lost money. Now: centre −370, step 4 → buy at −374 or lower,
+    and a round trip earns the step."""
+    eng = _engine(centre=-370.0)
+    e, h = eng.entropy, eng.hedge
+    hb = 99.99
+    h.set_book(hb, 100.01)
+
+    def entropy_at(prem_ask):          # Entropy ask at prem_ask over hedge bid
+        ea = hb * (1 + prem_ask / 1e4)
+        e.set_book(ea - 0.0001, ea)
+
+    entropy_at(-365.0)                 # the old code bought here (≤ −361)
+    assert run_scan(eng) is None
+    entropy_at(-373.5)
+    assert run_scan(eng) is None
+    entropy_at(-374.5)
+    best = run_scan(eng)
+    assert best is not None and best[0].key == "entropy"
+    # long one clip: the next sell needs Entropy bid / hedge ask ≥ −370
+    e.position = eng.cfg.max_order_notional / e.book.mid()
+    sell_at, buy_at = eng.grid_levels()
+    assert sell_at == pytest.approx(-370.0) and buy_at == pytest.approx(-378.0)
+    ha = 100.01
+    for prem_bid, fires in ((-371.0, False), (-369.0, True)):
+        eb = ha * (1 + prem_bid / 1e4)
+        e.set_book(eb, eb + 0.0001)
+        best = run_scan(eng)
+        assert (best is not None and best[1].key == "entropy") is fires
 
 
 def test_centre_follows_a_moved_premium():

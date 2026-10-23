@@ -24,6 +24,11 @@ import math
 import sys
 import time
 
+
+def reverse_bps(x: float) -> float:
+    """Premium of the other direction (as entropy_arb.book.reverse_bps)."""
+    return -x / (1.0 + x / 1e4)
+
 CANDIDATES = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 15.0, 20.0]
 
 
@@ -161,8 +166,11 @@ def main() -> None:
     fees = args.fees_bps
     sell_room = sorted((r["sell_max"] - midline - fees for r in rows),
                        reverse=True)
-    buy_room = sorted((r["buy_max"] + midline - fees for r in rows),
-                      reverse=True)
+    # buy_edge is the hedge over Entropy; the buy premium (Entropy over the
+    # hedge) is its exact reverse — not −buy_edge: at −300 bps the two
+    # differ by ~9 bps
+    buy_room = sorted((midline - reverse_bps(r["buy_max"]) - fees
+                       for r in rows), reverse=True)
 
     print(f"\nСколько минут срабатывал бы каждый порог (центр midline_bps = "
           f"{midline:+.1f} по медиане, комиссии {fees:.1f} bps):")

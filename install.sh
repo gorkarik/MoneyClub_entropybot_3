@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mriya версия 4 — установка на сервер Ubuntu одной командой:
+# Mriya — установка на сервер Ubuntu одной командой:
 #
 #   curl -fsSL https://raw.githubusercontent.com/gorkarik/Mriya/main/install.sh | bash
 #
@@ -34,7 +34,7 @@ main() {
   ok()   { printf '  ✔ %s\n' "$*"; }
   fail() { printf '\n  ✘ %s\n\n' "$*" >&2; exit 1; }
 
-  printf '\n  \033[1;92mM R I Y A\033[0m  ·  версия 4  —  установка\n'
+  printf '\n  \033[1;92mM R I Y A\033[0m  —  установка\n'
 
   # ---- права: root работает напрямую, обычный пользователь — через sudo
   local SUDO=""
@@ -188,7 +188,7 @@ main() {
   LAUNCHER="$(mktemp)"
   cat > "$LAUNCHER" <<EOF
 #!/usr/bin/env bash
-# Mriya версия 4 — открыть меню
+# Mriya — открыть меню
 export PYTHONUTF8=1
 cd "$APP_DIR" && exec "$APP_DIR/venv/bin/python" "$APP_DIR/club.py" "\$@"
 EOF

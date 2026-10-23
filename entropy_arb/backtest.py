@@ -2,7 +2,8 @@
 rules with candidate settings, and see what they would have done.
 
 What is modelled, the same way the engine does it:
-  * the band: centre + upper to sell Entropy, centre − lower to buy it,
+  * the band: centre + upper to sell Entropy, centre − lower to buy it
+    (in premium terms; the buy side is turned around exactly, as the engine),
     both venues' taker fees on top (book.plan_arb's inequality);
   * autonomy: floating centre (median of the premium sampled every 10 s),
     exit relief for trades that reduce the position, opening cooldown and
@@ -41,6 +42,7 @@ from typing import Iterable, Iterator, List, Optional
 
 from . import autonomy, holding
 from .autonomy import AutonomyConf, Centre
+from .book import reverse_bps
 from .strategy import volume_narrow_bps
 
 DEFAULT_SLIP_BPS = 1.0     # execution loss when the pair has too few trades
@@ -233,16 +235,20 @@ def run(ticks: List[Tick], p: Params) -> Result:
         for sell_entropy in (True, False):
             opens = pos <= 0 if sell_entropy else pos >= 0
             band = p.upper_bps if sell_entropy else p.lower_bps
-            hurdle = (c + band) if sell_entropy else (band - c)
+            # distance from the centre the premium must reach (as the engine)
+            dist = band
             if auto.enabled and not opens:
-                hurdle -= autonomy.exit_relief_bps(auto, band, age, u)
-            hurdle -= narrow
+                dist -= autonomy.exit_relief_bps(auto, band, age, u)
+            dist -= narrow
             if opens and p.inventory_scale_bps > 0:
                 floor = min(max(p.inventory_floor_frac, 0.0), 0.99)
                 if u > floor:
-                    hurdle += p.inventory_scale_bps * (u - floor) / (1 - floor)
+                    dist += p.inventory_scale_bps * (u - floor) / (1 - floor)
             if opens:
-                hurdle += p.vol_k * vol
+                dist += p.vol_k * vol
+            # buying Entropy is checked as the hedge over Entropy: the level
+            # is turned around exactly (reverse_bps), not by a sign
+            hurdle = (c + dist) if sell_entropy else reverse_bps(c - dist)
             if sell_entropy:
                 ok = t.e_sell * (1 - fe) >= t.h_buy * (1 + fh) * \
                     (1 + hurdle / 1e4)
@@ -283,7 +289,7 @@ def run(ticks: List[Tick], p: Params) -> Result:
             if ef:
                 lim = p.ef_slip_bps
                 if p.ef_limit == "profit":
-                    band_eff = hurdle - (c if sell_entropy else -c)
+                    band_eff = dist
                     spare = max(0.0, prem - hurdle - fees_bps)
                     lim = min(max(spare + max(0.0, band_eff)
                                   * (1.0 - p.ef_keep), 0.5),

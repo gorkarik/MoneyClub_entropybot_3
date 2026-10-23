@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mriya версия 4 — меню управления ботом.
+"""Mriya — меню управления ботом.
 
 Запуск: команда `Mriya` (ставится install.sh) или `venv/bin/python club.py`.
 
@@ -112,7 +112,7 @@ LOG_DIR = "logs"
 STDERR_LOG = os.path.join(LOG_DIR, "stderr.log")
 
 APP_NAME = "Mriya"
-SUBTITLE = "версия 4"   # мелкая подпись рядом с заставкой
+SUBTITLE = ""   # мелкая подпись рядом с заставкой (пусто — без подписи)
 
 
 def _tmux_name() -> str:
@@ -346,13 +346,13 @@ def clear() -> None:
 
 
 def print_banner() -> None:
-    """Зелёная заставка MRIYA; мелкая подпись «версия 4» — справа от
+    """Зелёная заставка MRIYA; мелкая подпись (если задана) — справа от
     последней строки букв."""
     wide = console.width >= 52
     lines = (BANNER if wide else BANNER_COMPACT).rstrip("\n").split("\n")
     for i, line in enumerate(lines):
         t = Text(line, style=BANNER_STYLE)
-        if i == len(lines) - 1:
+        if i == len(lines) - 1 and SUBTITLE:
             t.append("  " + SUBTITLE, style="dim cyan")
         console.print(t)
     nick = bot_nickname()

@@ -159,6 +159,14 @@ class ArbPlan:
                 - self.buy_notional * (1.0 + self.buy_fee))
 
 
+def reverse_bps(x_bps: float) -> float:
+    """Premium of the opposite direction, bps: if Entropy is x_bps over the
+    hedge (Entropy/hedge − 1), the hedge is reverse_bps(x_bps) over Entropy
+    (hedge/Entropy − 1). Not −x: at −300 bps the difference is ~9 bps,
+    at −370 ~14. The function is its own inverse."""
+    return -x_bps / (1.0 + x_bps / 1e4)
+
+
 def plan_arb(buy_book: OrderBook, sell_book: OrderBook, *, threshold_bps: float,
              buy_fee_bps: float, sell_fee_bps: float, take_fraction: float,
              cap_notional: float, min_base: float, min_notional: float,

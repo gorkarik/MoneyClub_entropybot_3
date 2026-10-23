@@ -204,13 +204,16 @@ def test_edge_vs_centre_removes_the_premium_level(tmp_path):
     eng = tg_engine(str(tmp_path))
     eng.centre = None
     eng.cfg.midline_bps = -250.0
-    # selling $20 of Entropy at premium −245 earns 5 bps over the centre,
-    # but the raw fill edge is −$0.49
-    raw_sell = 20.0 * -245.0 / 1e4
+    # fill edges as the engine records them: sell price − buy price, per
+    # $20 of Entropy. Hedge at 100; selling Entropy at premium −245 (price
+    # 97.55) earns 5 bps over the centre, though the raw edge is −$0.51
+    q = 20.0 / 97.55
+    raw_sell = q * (97.55 - 100.0)
     assert eng._edge_vs_centre("sell_entropy", raw_sell, 20.0) == \
         pytest.approx(20.0 * 5.0 / 1e4)
-    # buying at −255 earns 5 bps; raw +$0.51
-    raw_buy = 20.0 * 255.0 / 1e4
+    # buying at −255 (price 97.45) earns 5 bps; raw +$0.52
+    q = 20.0 / 97.45
+    raw_buy = q * (100.0 - 97.45)
     assert eng._edge_vs_centre("buy_entropy", raw_buy, 20.0) == \
         pytest.approx(20.0 * 5.0 / 1e4)
 
@@ -224,11 +227,11 @@ def test_uneven_sells_and_buys_do_not_pause(tmp_path):
     eng.lowprofit = watch.LowProfit(hours=6, min_trades=10)
     raw = 0.0
     for _ in range(12):
-        e = 20.0 * -245.0 / 1e4
+        e = 20.0 / 97.55 * (97.55 - 100.0)        # sold at −245
         raw += e
         eng._watch_profit(eng._edge_vs_centre("sell_entropy", e, 20.0))
     for _ in range(2):
-        e = 20.0 * 255.0 / 1e4
+        e = 20.0 / 97.45 * (100.0 - 97.45)        # bought at −255
         raw += e
         eng._watch_profit(eng._edge_vs_centre("buy_entropy", e, 20.0))
     assert raw < -4
@@ -240,8 +243,8 @@ def test_really_losing_trades_still_pause(tmp_path):
     eng.centre = None
     eng.cfg.midline_bps = -250.0
     eng.lowprofit = watch.LowProfit(hours=6, min_trades=10)
-    for _ in range(12):      # sells at the centre, costs 3 bps each
-        e = 20.0 * -253.0 / 1e4
+    for _ in range(12):      # sells 3 bps under the centre (−253)
+        e = 20.0 / 97.47 * (97.47 - 100.0)
         eng._watch_profit(eng._edge_vs_centre("sell_entropy", e, 20.0))
     assert eng.pauses.active() == ["lowprofit"]
 

@@ -3,7 +3,8 @@
 The signal is a fixed band around a configured midline (config.yaml):
 
     SELL entropy / BUY hedge  when executable premium >= midline + upper (+fees)
-    BUY entropy / SELL hedge  when executable premium <= midline - lower (+fees)
+    BUY entropy / SELL hedge  when executable premium <= midline - lower (fees
+                              included; turned around exactly, see reverse_bps)
 
 Around the signal: per-direction persistence arming,
 per-venue inventory ladder + position caps, per-venue order budgets and
@@ -22,7 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 
-from .book import ArbPlan, floor_step, plan_arb, walk_depth
+from .book import ArbPlan, floor_step, plan_arb, reverse_bps, walk_depth
 from .config import Config
 from .recorder import MinuteRecorder
 from .slipgate import SlipModel, leg_slip_bps, slip_file_name
@@ -652,10 +653,16 @@ class Engine:
         return max(ramp(buy, buy.position >= 0), ramp(sell, sell.position <= 0))
 
     def _eff_threshold(self, buy, sell) -> float:
-        """Net hurdle (bps, on top of fees) for the direction buy->sell.
+        """Net hurdle (bps, fees included by plan_arb) for buy->sell, in the
+        units plan_arb compares: the premium of the sell venue over the buy
+        venue.
 
-        selling entropy: executable premium must clear midline + upper;
-        buying entropy: the reverse premium must clear lower - midline."""
+        selling entropy: Entropy bid over hedge ask, net of fees, must reach
+        midline + upper; buying entropy: Entropy ask over hedge bid, fees
+        included, must fall to midline − lower. plan_arb sees the hedge over
+        Entropy for that direction, so the level is turned around exactly
+        with reverse_bps (not by a sign: at a premium of −300 bps the two
+        differ by ~9 bps)."""
         if self.grid_on():
             g = self.grid_base_bps(buy, sell)
             if g is None:
@@ -674,19 +681,19 @@ class Engine:
                     + self.slip_charge_bps(buy, sell)
                     + self.volume_charge_bps(buy, sell))
         mid = self.mid_bps()
-        if sell.key == "entropy":
-            band = self.cfg.upper_bps
-            base = mid + band
-        else:
-            band = self.cfg.lower_bps
-            base = band - mid
+        sell_e = sell.key == "entropy"
+        band = self.cfg.upper_bps if sell_e else self.cfg.lower_bps
+        # distance from the centre the premium must reach, bps
+        dist = band
         if self.auto.enabled and not self._opens(buy, sell):
-            base -= self.exit_relief_bps(band)
-        return (base - self.volume_narrow_bps()
-                + self.vol_add_bps(buy, sell)
-                + self._inv_add_bps(buy, sell)
-                + self.slip_charge_bps(buy, sell)
-                + self.volume_charge_bps(buy, sell))
+            dist -= self.exit_relief_bps(band)
+        dist += (self.vol_add_bps(buy, sell) + self._inv_add_bps(buy, sell)
+                 + self.slip_charge_bps(buy, sell)
+                 + self.volume_charge_bps(buy, sell)
+                 - self.volume_narrow_bps())
+        if sell_e:
+            return mid + dist
+        return reverse_bps(mid - dist)
 
     # ------------------------------------------------------- strategy 4: grid
 
@@ -725,18 +732,21 @@ class Engine:
         return c - (n - 1.0) * s, c - (n + 1.0) * s
 
     def grid_base_bps(self, buy, sell) -> Optional[float]:
-        """Grid threshold in the engine's terms (premium net of both taker
-        fees). Selling Entropy: Entropy bid over hedge ask must reach
-        sell_at; buying: Entropy ask over hedge bid must fall to buy_at.
-        The levels are on the price premium, so the fees come off here."""
+        """Grid threshold in plan_arb's terms: the premium of the sell venue
+        over the buy venue, net of both taker fees. The grid levels are on
+        the price premium before fees:
+          selling Entropy: Entropy bid / hedge ask − 1 >= sell_at;
+          buying Entropy:  Entropy ask / hedge bid − 1 <= buy_at, which
+          plan_arb sees as hedge bid / Entropy ask − 1 >= reverse_bps(buy_at)
+        (exact; −buy_at would be off by ~9 bps at a premium of −300)."""
         lv = self.grid_levels()
         if lv is None:
             return None
-        fees = buy.fee_bps + sell.fee_bps
         sell_at, buy_at = lv
-        if sell.key == "entropy":
-            return sell_at - fees
-        return -buy_at - fees
+        fs, fb = sell.fee_bps / 1e4, buy.fee_bps / 1e4
+        net = (1.0 - fs) / (1.0 + fb)          # fees, as plan_arb applies them
+        gross = sell_at if sell.key == "entropy" else reverse_bps(buy_at)
+        return ((1.0 + gross / 1e4) * net - 1.0) * 1e4
 
     # ------------------------------------------------ fast market, imbalance
 
@@ -798,7 +808,9 @@ class Engine:
         eff = self._eff_threshold(buy, sell)
         hurdle = eff + buy.fee_bps + sell.fee_bps
         mid = self.mid_bps()
-        band = eff - (mid if sell.key == "entropy" else -mid)
+        # distance of the hurdle from the centre (premium terms)
+        band = (eff - mid if sell.key == "entropy"
+                else mid - reverse_bps(eff))
         spare = max(0.0, plan.marginal_premium_bps - hurdle)
         give = max(0.0, band) * (1.0 - cfg.entropy_first_keep)
         return min(max(spare + give, 0.5), 3.0 * fixed)
@@ -2308,8 +2320,17 @@ class Engine:
         are fine. Subtracting the centre leaves what the trade earned over
         its own entry point: sell: (premium − centre), buy: (centre −
         premium), times the notional."""
-        c = self.mid_bps() / 1e4 * notional
-        return fill_edge - c if direction == "sell_entropy" else fill_edge + c
+        c = self.mid_bps()
+        if not notional:
+            return fill_edge
+        x = fill_edge / notional * 1e4       # bps of the Entropy notional
+        # back to the premium Entropy/hedge − 1 the trade was made at
+        # (exact; at −300 bps "−x" or "x" alone would be ~9 bps off)
+        if direction == "sell_entropy":
+            prem = reverse_bps(-x)            # x = 1 − hedge/Entropy
+            return (prem - c) / 1e4 * notional
+        prem = reverse_bps(x)                 # x = hedge/Entropy − 1
+        return (c - prem) / 1e4 * notional
 
     def _watch_profit(self, fill_edge: float, notional: float = 0.0) -> None:
         """fill_edge here is already measured from the centre
